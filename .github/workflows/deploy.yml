@@ -25,9 +25,9 @@ jobs:
       - run: npm install
       - run: npm run build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_FIRST_DAY: ${{ vars.VITE_FIRST_DAY }}
+          VITE_SUPABASE_URL: https://fokdjnqseqppmrjkimfu.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_C7pVM61DBzPfD0jqHLaCDQ_iR4Og0np
+          VITE_FIRST_DAY: "2026-06-05"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
