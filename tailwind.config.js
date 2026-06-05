@@ -4,16 +4,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#17211b",
+        ink: "var(--color-ink)",
         leaf: "#2f6f4e",
         moss: "#78956a",
-        paper: "#f8f7f1",
-        line: "#d9ded2",
+        paper: "var(--color-paper)",
+        card: "var(--color-card)",
+        surface: "var(--color-surface)",
+        muted: "var(--color-muted)",
+        line: "var(--color-line)",
         coral: "#d86f52",
         sky: "#5d91a8"
       },
       boxShadow: {
-        soft: "0 14px 40px rgba(23, 33, 27, 0.10)"
+        soft: "0 14px 40px var(--color-shadow)"
       }
     }
   },

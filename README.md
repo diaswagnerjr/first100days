@@ -18,6 +18,12 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Stakeholders
 - Fornecedores estrategicos
 - Categorias
+- Pilares metodologicos dos 100 dias
+- Handover Juliana
+- Simulacao de estrutura organizacional
+- Tema claro/escuro
+- Exportacao `.ics` para Outlook/iPhone
+- Atalho de WhatsApp para fornecedores
 - Banco Supabase com RLS por usuario
 - Seed automatico por usuario novo
 
@@ -52,10 +58,22 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 
 1. Abra o projeto Supabase `first100days`.
 2. Execute o SQL em `supabase/migrations/20260605180000_initial_schema.sql` no SQL Editor.
-3. Confira se Auth esta habilitado com e-mail/senha.
-4. Crie um usuario pelo app. O trigger `seed_first100days_user` vai popular os dados iniciais para esse usuario.
+3. Execute o SQL incremental em `supabase/migrations/20260605203000_first100days_expansion.sql`.
+4. Confira se Auth esta habilitado com e-mail/senha.
+5. Crie um usuario pelo app. Os triggers de seed populam os dados iniciais e os modulos expandidos para esse usuario.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
+
+Tabelas principais:
+
+- `people`, `stakeholders`, `suppliers`, `categories`, `diagnosis`
+- `methodology_pillars`, `pillar_decisions`
+- `handover_checklist`
+- `org_scenarios`, `org_scenario_items`
+- `meetings`, `reminders`
+- `profiles`, `user_preferences`
+
+Observacao de seguranca: use apenas `VITE_SUPABASE_ANON_KEY`/publishable key no front-end. Nunca publique `service_role` ou secret key no GitHub Pages.
 
 ## GitHub Pages
 
@@ -67,11 +85,16 @@ Configure no repositorio:
 
 O workflow em `.github/workflows/deploy.yml` publica o build em GitHub Pages quando houver push na `main`.
 
+Depois de alterar migrations:
+
+1. Execute o SQL no Supabase SQL Editor.
+2. Rode `npm run build` localmente quando as dependencias estiverem instaladas.
+3. Faça push na `main`.
+4. Acompanhe o workflow `Deploy GitHub Pages` em Actions.
+5. Acesse `https://diaswagnerjr.github.io/first100days/`.
+
 ## Proximas entregas
 
-- Organograma atual/futuro
-- Simulacoes de estrutura
 - Early wins com matriz impacto x esforco
-- Agenda e exportacao `.ics`
 - Exportacao CSV
 - Estrategia final e plano pos-100 dias
