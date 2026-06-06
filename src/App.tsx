@@ -249,8 +249,9 @@ function App() {
 
   async function ensureInitialData(userId: string) {
     if (!supabase) return;
+    const client = supabase;
     const insertMany = async (collection: CollectionKey, rows: Array<{ id: string }>) => {
-      await supabase.from(tableNames[collection]).insert(rows.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
+      await client.from(tableNames[collection]).insert(rows.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
     };
     await Promise.all([
       insertMany("people", peopleSeed),
@@ -261,8 +262,8 @@ function App() {
       insertMany("handoverChecklist", handoverChecklistSeed),
       insertMany("orgScenarios", orgScenariosSeed),
       insertMany("orgScenarioItems", orgScenarioItemsSeed),
-      supabase.from(tableNames.diagnosis).insert(toSnake(initialData.diagnosis as unknown as Record<string, unknown>, userId)),
-      supabase.from(tableNames.userPreferences).insert({ user_id: userId, theme: data.userPreferences.theme })
+      client.from(tableNames.diagnosis).insert(toSnake(initialData.diagnosis as unknown as Record<string, unknown>, userId)),
+      client.from(tableNames.userPreferences).insert({ user_id: userId, theme: data.userPreferences.theme })
     ]);
   }
 
@@ -280,7 +281,7 @@ function App() {
 
   async function addRow(collection: CollectionKey) {
     const base = emptyRows[collection];
-    const row = { ...base, id: crypto.randomUUID(), name: "name" in base ? `Novo ${base.name}` : undefined } as { id: string };
+    const row = { ...base, id: crypto.randomUUID(), name: "name" in base ? `Novo ${base.name}` : undefined } as unknown as { id: string };
     if (collection === "orgScenarioItems") {
       (row as OrgScenarioItem).scenarioId = data.orgScenarios[0]?.id || "";
       (row as OrgScenarioItem).personName = "Nova posicao";
@@ -861,8 +862,8 @@ function downloadIcs(title: string, date: string, description: string) {
     window.alert("Preencha uma data antes de exportar.");
     return;
   }
-  const start = date.replaceAll("-", "") + "T120000Z";
-  const end = date.replaceAll("-", "") + "T130000Z";
+  const start = date.replace(/-/g, "") + "T120000Z";
+  const end = date.replace(/-/g, "") + "T130000Z";
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
