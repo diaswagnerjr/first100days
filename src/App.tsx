@@ -4,13 +4,16 @@ import {
   BriefcaseBusiness,
   CalendarPlus,
   Copy,
+  Edit3,
   GitBranch,
   Handshake,
   LayoutDashboard,
+  ListFilter,
   LogOut,
   Moon,
   Paperclip,
   Plus,
+  Save,
   Search,
   ShieldAlert,
   Sun,
@@ -133,11 +136,20 @@ const fromSnake = <T,>(row: Record<string, unknown>) => {
 const asArray = (value: unknown) => (Array.isArray(value) ? value.map(String) : typeof value === "string" && value ? value.split(",").map((item) => item.trim()) : []);
 const todayIso = () => new Date().toISOString();
 
-const normalizePerson = (row: Person): Person => ({ ...peopleSeed[0], ...row, categoryIds: asArray(row.categoryIds), potentialNotes: row.potentialNotes || "", hardSkills: row.hardSkills || "", softSkills: row.softSkills || "" });
+const normalizePerson = (row: Person): Person => ({
+  ...peopleSeed[0],
+  ...row,
+  categoryIds: asArray(row.categoryIds),
+  potentialNotes: row.potentialNotes || "",
+  hardSkills: row.hardSkills || "",
+  softSkills: row.softSkills || "",
+  hardSkillsScore: Number(row.hardSkillsScore || 3),
+  softSkillsScore: Number(row.softSkillsScore || 3)
+});
 const normalizeStakeholder = (row: Stakeholder): Stakeholder => ({ ...stakeholdersSeed[0], ...row, conversationDate: row.conversationDate || row.firstConversation || "", interactionStatus: row.interactionStatus || "Nao iniciado" });
 const normalizeSupplier = (row: Supplier): Supplier => ({ ...suppliersInitial[0], ...row, conversationDate: row.conversationDate || row.firstInteraction || "", interactionStatus: row.interactionStatus || row.relationshipStatus || "Nao iniciado", nextSteps: row.nextSteps || row.actionPlan || "" });
 const normalizePillar = (row: MethodologyPillar): MethodologyPillar => ({ ...(methodologyPillarsSeed.find((item) => item.name === row.name) ?? methodologyPillarsSeed[0]), ...row });
-const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, attachments: Array.isArray(row.attachments) ? row.attachments : [] });
+const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [] });
 const normalizeScenarioItem = (row: OrgScenarioItem): OrgScenarioItem => ({ ...orgScenarioItemsSeed[0], ...row, categoryIds: asArray(row.categoryIds), spendResponsibility: Number(row.spendResponsibility || 0) });
 const normalizePreferences = (row: UserPreference): UserPreference => ({ ...initialData.userPreferences, ...row, accessCount: Number(row.accessCount || 0), mutationCount: Number(row.mutationCount || 0) });
 
@@ -206,13 +218,17 @@ function App() {
         await ensureInitialData(userId);
         return loadCloudData(userId);
       }
+      if (!suppliers.data?.length || !categories.data?.length) {
+        await ensureSpendData(userId, !suppliers.data?.length, !categories.data?.length);
+        return loadCloudData(userId);
+      }
       const pref = normalizePreferences(preferences.data ? fromSnake<UserPreference>(preferences.data) : initialData.userPreferences);
       const nextPref = await recordAccess(userId, pref);
       setData({
         people: people.data.map((row) => normalizePerson(fromSnake<Person>(row))),
         stakeholders: stakeholders.data?.map((row) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? initialData.stakeholders,
-        suppliers: suppliers.data?.map((row) => normalizeSupplier(fromSnake<Supplier>(row))) ?? initialData.suppliers,
-        categories: categories.data?.map((row) => fromSnake<Category>(row)) ?? initialData.categories,
+        suppliers: suppliers.data?.length ? suppliers.data.map((row) => normalizeSupplier(fromSnake<Supplier>(row))) : suppliersInitial,
+        categories: categories.data?.length ? categories.data.map((row) => fromSnake<Category>(row)) : categoriesInitial,
         diagnosis: diagnosis.data ? fromSnake<Diagnosis>(diagnosis.data) : initialData.diagnosis,
         methodologyPillars: pillars.data?.map((row) => normalizePillar(fromSnake<MethodologyPillar>(row))) ?? initialData.methodologyPillars,
         handoverChecklist: handover.data?.map((row) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
@@ -265,6 +281,16 @@ function App() {
       client.from(tableNames.diagnosis).insert(toSnake(initialData.diagnosis as unknown as Record<string, unknown>, userId)),
       client.from(tableNames.userPreferences).upsert({ user_id: userId, theme: data.userPreferences.theme }, { onConflict: "user_id" })
     ]);
+  }
+
+  async function ensureSpendData(userId: string, needsSuppliers: boolean, needsCategories: boolean) {
+    if (!supabase) return;
+    const client = supabase;
+    const insertMany = async (collection: CollectionKey, rows: Array<{ id: string }>) => {
+      await client.from(tableNames[collection]).insert(rows.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
+    };
+    if (needsSuppliers) await insertMany("suppliers", suppliersInitial);
+    if (needsCategories) await insertMany("categories", categoriesInitial);
   }
 
   async function upsertRow<T extends { id: string }>(collection: CollectionKey, row: T) {
@@ -328,6 +354,35 @@ function App() {
     await bumpMutation();
   }
 
+  async function addScenarioWithPeople() {
+    const newId = crypto.randomUUID();
+    const scenario: OrgScenario = {
+      id: newId,
+      name: "Novo cenario",
+      description: "",
+      rationale: "",
+      risks: "",
+      recommendedDecision: "",
+      status: "Mapear"
+    };
+    const scenarioPeople = (data.people.length ? data.people : peopleSeed).map((person) => ({
+      id: crypto.randomUUID(),
+      scenarioId: newId,
+      personName: person.name,
+      role: person.role,
+      cluster: person.cluster || "A definir",
+      manager: person.name === "Juliana Cardoso Gomes" ? "" : "Juliana Cardoso Gomes",
+      categoryIds: person.categoryIds || [],
+      spendResponsibility: spendFor(data.categories, person.categoryIds || []),
+      notes: ""
+    }));
+    setData((current) => ({ ...current, orgScenarios: [scenario, ...current.orgScenarios], orgScenarioItems: [...scenarioPeople, ...current.orgScenarioItems] }));
+    if (!supabase || !session?.user.id) return;
+    await supabase.from(tableNames.orgScenarios).insert(toSnake(scenario as unknown as Record<string, unknown>, session.user.id));
+    await supabase.from(tableNames.orgScenarioItems).insert(scenarioPeople.map((item) => toSnake(item as unknown as Record<string, unknown>, session.user.id)));
+    await bumpMutation();
+  }
+
   async function signOut() {
     await supabase?.auth.signOut();
     setSession(null);
@@ -378,8 +433,9 @@ function App() {
             <OrgPanel
               scenarios={data.orgScenarios}
               items={data.orgScenarioItems}
+              people={data.people}
               categories={data.categories}
-              addScenario={() => addRow("orgScenarios", { name: "Novo cenario", description: "", rationale: "", risks: "", recommendedDecision: "", status: "Mapear" })}
+              addScenario={addScenarioWithPeople}
               duplicateScenario={duplicateScenario}
               deleteScenario={(id) => deleteRow("orgScenarios", id)}
               addItem={(scenarioId) => addRow("orgScenarioItems", { scenarioId, personName: "Nova posicao", role: "", cluster: "", manager: "", categoryIds: [], spendResponsibility: 0, notes: "" })}
@@ -443,6 +499,13 @@ function Dashboard({ dayState, data, metrics }: { dayState: { elapsed: number; p
         <Metric title="Fornecedores" value={`${metrics.suppliersDone}/${metrics.supplierGoal}`} note="interacoes" />
       </section>
 
+      <section className="grid gap-3 md:grid-cols-4">
+        <Metric title="Spend PB'26 categorias" value={money(metrics.categorySpend)} note={`${data.categories.length} categorias carregadas`} />
+        <Metric title="Spend fornecedores" value={money(metrics.supplierSpend)} note={`${data.suppliers.length} fornecedores carregados`} />
+        <Metric title="Top 20 fornecedores" value={money(metrics.topSupplierSpend)} note="maiores da planilha" />
+        <Metric title="Categorias sem dono" value={String(metrics.unassignedCategories)} note="controle de cobertura do time" />
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
         <Panel title="Calculo de progresso">
           <ProgressRow label={`Pessoas do time (${metrics.peopleDone}/${data.people.length})`} value={metrics.peopleProgress} />
@@ -458,6 +521,17 @@ function Dashboard({ dayState, data, metrics }: { dayState: { elapsed: number; p
           </div>
           <p className="mt-3 text-sm text-muted">Ultimo acesso: {formatDateTime(data.userPreferences.lastAccessedAt)}</p>
           <p className="text-sm text-muted">Acesso anterior: {formatDateTime(data.userPreferences.previousAccessedAt)}</p>
+        </Panel>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Categorias ainda nao atribuidas">
+          <div className="flex flex-wrap gap-2">
+            {metrics.unassignedCategoryNames.slice(0, 45).map((name) => <span key={name} className="rounded border border-line bg-surface px-2 py-1 text-xs">{name}</span>)}
+          </div>
+        </Panel>
+        <Panel title="Pessoas x quantidade de categorias">
+          <RankedRows items={data.people.map((person) => [person.name, `${person.categoryIds.length} categorias`])} />
         </Panel>
       </section>
 
@@ -478,7 +552,28 @@ function Dashboard({ dayState, data, metrics }: { dayState: { elapsed: number; p
 function PillarsPanel({ rows, onChange }: { rows: MethodologyPillar[]; onChange: (row: MethodologyPillar) => void }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || rows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
   if (!row) return null;
+  const current = draft || row;
+  const save = () => {
+    onChange(current);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!window.confirm("Tem certeza que deseja limpar tudo deste pilar?")) return;
+    setDraft({ ...current, status: "Nao iniciado", decision: "", decisionDate: "", evidence: "", comments: "", nextSteps: "" });
+    setSaved(false);
+  };
   return (
     <Panel title="Pilares dos 100 dias">
       <CardLayout
@@ -488,16 +583,16 @@ function PillarsPanel({ rows, onChange }: { rows: MethodologyPillar[]; onChange:
         renderCard={(item) => <Summary title={item.name} subtitle={item.status} meta={item.decision || "Sem decisao registrada"} />}
       >
         <div className="grid gap-3 lg:grid-cols-2">
-          <ReadOnly label="O que e" value={row.explanation} />
-          <ReadOnly label="Esperado na etapa" value={row.expected} />
-          <Select label="Status" value={row.status} onChange={(value) => onChange({ ...row, status: value as MethodologyPillar["status"] })} options={["Nao iniciado", "Iniciado", "Em andamento", "Em risco", "Concluido"]} />
-          <Field label="Data da decisao" type="date" value={row.decisionDate} onChange={(value) => onChange({ ...row, decisionDate: value })} />
-          <Field label="Principais decisoes" area value={row.decision} onChange={(value) => onChange({ ...row, decision: value })} />
-          <Field label="Evidencias" area value={row.evidence} onChange={(value) => onChange({ ...row, evidence: value })} />
-          <Field label="Proximos passos" area value={row.nextSteps} onChange={(value) => onChange({ ...row, nextSteps: value })} />
-          <Field label="Comentarios" area value={row.comments} onChange={(value) => onChange({ ...row, comments: value })} />
+          <ReadOnly label="O que e" value={current.explanation} />
+          <ReadOnly label="Esperado na etapa" value={current.expected} />
+          <Select disabled={!editing} label="Status" value={current.status} onChange={(value) => setDraft({ ...current, status: value as MethodologyPillar["status"] })} options={["Nao iniciado", "Iniciado", "Em andamento", "Em risco", "Concluido"]} />
+          <Field disabled={!editing} label="Data da decisao" type="date" value={current.decisionDate} onChange={(value) => setDraft({ ...current, decisionDate: value })} />
+          <Field disabled={!editing} label="Principais decisoes" area value={current.decision} onChange={(value) => setDraft({ ...current, decision: value })} />
+          <Field disabled={!editing} label="Evidencias" area value={current.evidence} onChange={(value) => setDraft({ ...current, evidence: value })} />
+          <Field disabled={!editing} label="Proximos passos" area value={current.nextSteps} onChange={(value) => setDraft({ ...current, nextSteps: value })} />
+          <Field disabled={!editing} label="Comentarios" area value={current.comments} onChange={(value) => setDraft({ ...current, comments: value })} />
         </div>
-        <SaveBar updatedAt={row.updatedAt} onSave={() => onChange(row)} />
+        <EditActions editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
       </CardLayout>
     </Panel>
   );
@@ -506,51 +601,139 @@ function PillarsPanel({ rows, onChange }: { rows: MethodologyPillar[]; onChange:
 function PeoplePanel({ rows, categories, onChange }: { rows: Person[]; categories: Category[]; onChange: (row: Person) => void }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || rows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
   if (!row) return null;
+  const current = draft || row;
+  const assigned = new Set(rows.flatMap((person) => person.id === current.id ? current.categoryIds : person.categoryIds));
+  const unassigned = categories.filter((category) => !assigned.has(category.id));
+  const matrixRows = rows.map((person) => {
+    const categoryIds = person.id === current.id ? current.categoryIds : person.categoryIds;
+    return [person.name, String(categoryIds.length), money(spendFor(categories, categoryIds))];
+  });
+  const save = () => {
+    onChange({ ...current, portfolios: labelsFor(categories, current.categoryIds).join(", ") });
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!window.confirm("Tem certeza que deseja limpar tudo desta pessoa? Nome e cargo serao preservados.")) return;
+    setDraft({
+      ...current,
+      cluster: "A definir",
+      portfolios: "",
+      categoryIds: [],
+      firstOneOnOne: "",
+      nextConversation: "",
+      agendaStatus: "Agendar 1:1",
+      sommos: "",
+      sommosScore: 0,
+      performance: 3,
+      potential: 3,
+      potentialNotes: "",
+      hardSkills: "",
+      softSkills: "",
+      hardSkillsScore: 3,
+      softSkillsScore: 3,
+      strengths: "",
+      attentionPoints: "",
+      risks: "",
+      succession: "",
+      development: "",
+      notes: ""
+    });
+    setSaved(false);
+  };
   return (
     <Panel title="Pessoas do time">
       <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={item.role} meta={item.firstOneOnOne ? "1:1 realizada" : "0/1 conversa"} />}>
         <div className="grid gap-3 lg:grid-cols-2">
-          <Field label="Nome" value={row.name} onChange={(value) => onChange({ ...row, name: value })} />
-          <Field label="Cargo" value={row.role} onChange={(value) => onChange({ ...row, role: value })} />
-          <Field label="Data da 1:1" type="date" value={row.firstOneOnOne} onChange={(value) => onChange({ ...row, firstOneOnOne: value })} />
-          <MultiSelect label="Categorias atendidas" value={row.categoryIds} options={categories} onChange={(value) => onChange({ ...row, categoryIds: value, portfolios: labelsFor(categories, value).join(", ") })} />
-          <Select label="Avaliacao Sommos" value={row.sommos} onChange={(value) => onChange({ ...row, sommos: value })} options={["", "Abaixo do esperado", "Em desenvolvimento", "Dentro do esperado", "Acima do esperado", "Referencia"]} />
-          <Field label="Potencial" value={row.potentialNotes} onChange={(value) => onChange({ ...row, potentialNotes: value })} />
-          <Field label="Hard skills" area value={row.hardSkills} onChange={(value) => onChange({ ...row, hardSkills: value })} />
-          <Field label="Soft skills" area value={row.softSkills} onChange={(value) => onChange({ ...row, softSkills: value })} />
-          <Field label="Pontos fortes" area value={row.strengths} onChange={(value) => onChange({ ...row, strengths: value })} />
-          <Field label="Pontos de atencao" area value={row.attentionPoints} onChange={(value) => onChange({ ...row, attentionPoints: value })} />
-          <Field label="Riscos" area value={row.risks} onChange={(value) => onChange({ ...row, risks: value })} />
-          <Field label="Plano de desenvolvimento" area value={row.development} onChange={(value) => onChange({ ...row, development: value })} />
-          <Field label="Anotacoes" area value={row.notes} onChange={(value) => onChange({ ...row, notes: value })} />
+          <Field disabled={!editing} label="Nome" value={current.name} onChange={(value) => setDraft({ ...current, name: value })} />
+          <Field disabled={!editing} label="Cargo" value={current.role} onChange={(value) => setDraft({ ...current, role: value })} />
+          <Field disabled={!editing} label="Data da 1:1" type="date" value={current.firstOneOnOne} onChange={(value) => setDraft({ ...current, firstOneOnOne: value })} />
+          <MultiSelect disabled={!editing} label="Categorias atendidas" value={current.categoryIds} options={categories} onChange={(value) => setDraft({ ...current, categoryIds: value, portfolios: labelsFor(categories, value).join(", ") })} />
+          <Select disabled={!editing} label="Avaliacao Sommos" value={current.sommos} onChange={(value) => setDraft({ ...current, sommos: value })} options={["", "Abaixo do esperado", "Em desenvolvimento", "Dentro do esperado", "Acima do esperado", "Referencia"]} />
+          <Field disabled={!editing} label="Potencial" value={current.potentialNotes} onChange={(value) => setDraft({ ...current, potentialNotes: value })} />
+          <Slider disabled={!editing} label="Hard skills para a cadeira" value={current.hardSkillsScore} onChange={(value) => setDraft({ ...current, hardSkillsScore: value })} />
+          <Slider disabled={!editing} label="Soft skills para a cadeira" value={current.softSkillsScore} onChange={(value) => setDraft({ ...current, softSkillsScore: value })} />
+          <Field disabled={!editing} label="Notas de hard skills" area value={current.hardSkills} onChange={(value) => setDraft({ ...current, hardSkills: value })} />
+          <Field disabled={!editing} label="Notas de soft skills" area value={current.softSkills} onChange={(value) => setDraft({ ...current, softSkills: value })} />
+          <Field disabled={!editing} label="Pontos fortes" area value={current.strengths} onChange={(value) => setDraft({ ...current, strengths: value })} />
+          <Field disabled={!editing} label="Pontos de atencao" area value={current.attentionPoints} onChange={(value) => setDraft({ ...current, attentionPoints: value })} />
+          <Field disabled={!editing} label="Riscos" area value={current.risks} onChange={(value) => setDraft({ ...current, risks: value })} />
+          <Field disabled={!editing} label="Plano de desenvolvimento" area value={current.development} onChange={(value) => setDraft({ ...current, development: value })} />
+          <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
         </div>
+        <EditActions editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
         <ActionBar>
-          <button className="btn" onClick={() => onChange(row)}>Salvar</button>
-          <button className="btn" onClick={() => downloadIcs(`1:1 - ${row.name}`, row.firstOneOnOne, row.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
+          <button className="btn" onClick={() => downloadIcs(`1:1 - ${current.name}`, current.firstOneOnOne, current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
         </ActionBar>
       </CardLayout>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.85fr]">
+        <Panel title="Categorias sem responsavel">
+          <Metric title="Nao atribuidas" value={String(unassigned.length)} note={`${categories.length} categorias na base`} />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {unassigned.slice(0, 60).map((category) => <span key={category.id} className="rounded border border-line bg-surface px-2 py-1 text-xs">{category.name}</span>)}
+          </div>
+        </Panel>
+        <Panel title="Matriz pessoa x categorias">
+          <RankedRows items={matrixRows} />
+        </Panel>
+      </div>
     </Panel>
   );
 }
 
 function HandoverPanel({ rows, onChange }: { rows: HandoverItem[]; onChange: (row: HandoverItem) => void }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
-  const row = rows.find((item) => item.id === selected) || rows[0];
+  const [sortByCluster, setSortByCluster] = useState(false);
+  const sortedRows = sortByCluster ? [...rows].sort((a, b) => `${a.cluster || handoverCluster(a.item)}-${a.item}`.localeCompare(`${b.cluster || handoverCluster(b.item)}-${b.item}`)) : rows;
+  const row = rows.find((item) => item.id === selected) || sortedRows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
   if (!row) return null;
+  const current = draft || row;
+  const clusters = Array.from(new Set(rows.map((item) => item.cluster || handoverCluster(item.item)))).sort();
+  const save = () => {
+    onChange(current);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!window.confirm("Tem certeza que deseja limpar tudo deste ponto de handover? Tema e cluster serao preservados.")) return;
+    setDraft({ ...current, status: "Nao iniciado", comment: "", owner: "Wagner / Thais", dueDate: "", links: "", attachments: [] });
+    setSaved(false);
+  };
   return (
-    <Panel title="Handover Thais">
-      <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.item} subtitle={item.status} meta={item.owner || "Sem responsavel"} />}>
+    <Panel title="Handover Thais" action={<button className="btn" onClick={() => setSortByCluster((value) => !value)}><ListFilter size={16} /> {sortByCluster ? "Ordem original" : "Ordenar por cluster"}</button>}>
+      <CardLayout rows={sortedRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.item} subtitle={item.status} meta={item.cluster || handoverCluster(item.item)} />}>
         <div className="grid gap-3 lg:grid-cols-2">
-          <ReadOnly label="Tema" value={row.item} />
-          <Select label="Status" value={row.status} onChange={(value) => onChange({ ...row, status: value as HandoverItem["status"] })} options={["Nao iniciado", "Iniciado", "Em andamento", "Em risco", "Concluido"]} />
-          <Field label="Responsaveis" value={row.owner} onChange={(value) => onChange({ ...row, owner: value })} />
-          <Field label="Prazo" type="date" value={row.dueDate} onChange={(value) => onChange({ ...row, dueDate: value })} />
-          <Field label="Comentarios" area value={row.comment} onChange={(value) => onChange({ ...row, comment: value })} />
-          <Field label="Links" area value={row.links} onChange={(value) => onChange({ ...row, links: value })} />
+          <ReadOnly label="Tema" value={current.item} />
+          <Select disabled={!editing} label="Cluster" value={current.cluster || handoverCluster(current.item)} onChange={(value) => setDraft({ ...current, cluster: value })} options={clusters} />
+          <Select disabled={!editing} label="Status" value={current.status} onChange={(value) => setDraft({ ...current, status: value as HandoverItem["status"] })} options={["Nao iniciado", "Iniciado", "Em andamento", "Em risco", "Concluido"]} />
+          <Field disabled={!editing} label="Responsaveis" value={current.owner} onChange={(value) => setDraft({ ...current, owner: value })} />
+          <Field disabled={!editing} label="Prazo" type="date" value={current.dueDate} onChange={(value) => setDraft({ ...current, dueDate: value })} />
+          <Field disabled={!editing} label="Comentarios" area value={current.comment} onChange={(value) => setDraft({ ...current, comment: value })} />
+          <Field disabled={!editing} label="Links" area value={current.links} onChange={(value) => setDraft({ ...current, links: value })} />
         </div>
-        <AttachmentBox row={row} onChange={onChange} />
-        <SaveBar updatedAt={row.updatedAt} onSave={() => onChange(row)} />
+        <AttachmentBox disabled={!editing} row={current} onChange={setDraft} />
+        <EditActions editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
       </CardLayout>
     </Panel>
   );
@@ -559,6 +742,7 @@ function HandoverPanel({ rows, onChange }: { rows: HandoverItem[]; onChange: (ro
 function OrgPanel({
   scenarios,
   items,
+  people,
   categories,
   addScenario,
   duplicateScenario,
@@ -570,6 +754,7 @@ function OrgPanel({
 }: {
   scenarios: OrgScenario[];
   items: OrgScenarioItem[];
+  people: Person[];
   categories: Category[];
   addScenario: () => void;
   duplicateScenario: (scenario: OrgScenario) => void;
@@ -582,9 +767,33 @@ function OrgPanel({
   const [selected, setSelected] = useState(scenarios[0]?.id || "");
   const scenario = scenarios.find((item) => item.id === selected) || scenarios[0];
   const scenarioItems = items.filter((item) => item.scenarioId === scenario?.id);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (scenario) {
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [scenario?.id]);
   if (!scenario) return null;
+  const peopleOptions = people.length ? people : peopleSeed;
   const byPerson = scenarioItems.map((item) => ({ ...item, spendResponsibility: spendFor(categories, item.categoryIds), categoryCount: item.categoryIds.length }));
-  const byCluster = Array.from(byPerson.reduce((map, item) => map.set(item.cluster || "Sem cluster", (map.get(item.cluster || "Sem cluster") || 0) + item.spendResponsibility), new Map<string, number>()).entries());
+  const byCluster = Array.from(byPerson.reduce((map, item) => {
+    const cluster = item.cluster || "Sem cluster";
+    map.set(cluster, [...(map.get(cluster) || []), item]);
+    return map;
+  }, new Map<string, OrgScenarioItem[]>()).entries());
+  const managers = Array.from(new Set(["", ...byPerson.map((item) => item.personName), ...peopleOptions.map((person) => person.name)])).filter((item, index, all) => all.indexOf(item) === index);
+  const saveScenario = () => {
+    onScenario(scenario);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clearScenario = () => {
+    if (!window.confirm("Tem certeza que deseja limpar o racional, riscos e decisoes deste cenario? As pessoas serao preservadas.")) return;
+    onScenario({ ...scenario, description: "", rationale: "", risks: "", recommendedDecision: "", status: "Mapear" });
+    setSaved(true);
+  };
   return (
     <Panel title="Estrutura organizacional e simulacao">
       <div className="mb-4 flex flex-wrap gap-2">
@@ -594,48 +803,58 @@ function OrgPanel({
       </div>
       <Select label="Cenario" value={scenario.id} onChange={setSelected} options={scenarios.map((item) => item.id)} labels={Object.fromEntries(scenarios.map((item) => [item.id, item.name]))} />
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <Field label="Nome do cenario" value={scenario.name} onChange={(value) => onScenario({ ...scenario, name: value })} />
-        <Select label="Status" value={scenario.status} onChange={(value) => onScenario({ ...scenario, status: value as OrgScenario["status"] })} options={["Mapear", "Iniciado", "Em andamento", "Concluido"]} />
-        <Field label="Racional da mudanca" area value={scenario.rationale} onChange={(value) => onScenario({ ...scenario, rationale: value })} />
-        <Field label="Riscos" area value={scenario.risks} onChange={(value) => onScenario({ ...scenario, risks: value })} />
-        <Field label="Decisao recomendada" area value={scenario.recommendedDecision} onChange={(value) => onScenario({ ...scenario, recommendedDecision: value })} />
+        <Field disabled={!editing} label="Nome do cenario" value={scenario.name} onChange={(value) => onScenario({ ...scenario, name: value })} />
+        <Select disabled={!editing} label="Status" value={scenario.status} onChange={(value) => onScenario({ ...scenario, status: value as OrgScenario["status"] })} options={["Mapear", "Iniciado", "Em andamento", "Concluido"]} />
+        <Field disabled={!editing} label="Racional da mudanca" area value={scenario.rationale} onChange={(value) => onScenario({ ...scenario, rationale: value })} />
+        <Field disabled={!editing} label="Riscos" area value={scenario.risks} onChange={(value) => onScenario({ ...scenario, risks: value })} />
+        <Field disabled={!editing} label="Decisoes" area value={scenario.recommendedDecision} onChange={(value) => onScenario({ ...scenario, recommendedDecision: value })} />
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <Metric title="Spend no cenario" value={money(byPerson.reduce((sum, item) => sum + item.spendResponsibility, 0))} note="soma por pessoa" />
-        <Metric title="Categorias alocadas" value={String(byPerson.reduce((sum, item) => sum + item.categoryCount, 0))} note="responsabilidades" />
-        <Metric title="Clusters" value={String(byCluster.length)} note="distribuicao ativa" />
-      </div>
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <Panel title="Spend por cluster"><RankedRows items={byCluster.map(([name, spend]) => [name, money(spend)])} /></Panel>
-        <Panel title="Comparacao de cenarios">
-          <RankedRows items={scenarios.map((item) => {
-            const total = items.filter((pos) => pos.scenarioId === item.id).reduce((sum, pos) => sum + spendFor(categories, pos.categoryIds), 0);
-            return [item.name, money(total)];
-          })} />
-        </Panel>
-      </div>
+      <EditActions editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => setEditing(false)} onSave={saveScenario} onClear={clearScenario} />
       <div className="mt-5 flex justify-between">
-        <h3 className="font-semibold">Posicoes, clusters e categorias</h3>
+        <h3 className="font-semibold">Pessoas, reportes, clusters e categorias</h3>
         <button className="btn" onClick={() => addItem(scenario.id)}>Adicionar posicao</button>
       </div>
       <div className="mt-3 grid gap-3">
         {byPerson.map((item) => (
           <Card key={item.id}>
             <div className="grid gap-3 lg:grid-cols-2">
-              <Field label="Nome da pessoa" value={item.personName} onChange={(value) => onItem({ ...item, personName: value })} />
+              <Select label="Pessoa" value={item.personName} onChange={(value) => {
+                const person = peopleOptions.find((option) => option.name === value);
+                onItem({ ...item, personName: value, role: person?.role || item.role });
+              }} options={peopleOptions.map((person) => person.name)} />
               <Field label="Cargo" value={item.role} onChange={(value) => onItem({ ...item, role: value })} />
               <Field label="Cluster" value={item.cluster} onChange={(value) => onItem({ ...item, cluster: value })} />
-              <Field label="Reporte direto" value={item.manager} onChange={(value) => onItem({ ...item, manager: value })} />
+              <Select label="Reporte direto" value={item.manager} onChange={(value) => onItem({ ...item, manager: value })} options={managers} />
               <MultiSelect label="Categorias sob responsabilidade" value={item.categoryIds} options={categories} onChange={(value) => onItem({ ...item, categoryIds: value, spendResponsibility: spendFor(categories, value) })} />
-              <ReadOnly label="Spend sob responsabilidade" value={`${money(item.spendResponsibility)} | ${item.categoryCount} categorias`} />
+              <ReadOnly label="Resumo da carteira" value={`${item.categoryCount} categorias atribuidas`} />
               <Field label="Observacoes" area value={item.notes} onChange={(value) => onItem({ ...item, notes: value })} />
             </div>
             <ActionBar>
-              <button className="btn" onClick={() => onItem(item)}>Salvar posicao</button>
+              <button className="btn" onClick={() => onItem(item)}><Save size={16} /> Salvar posicao</button>
               <button className="btn" onClick={() => deleteItem(item.id)}><Trash2 size={16} /> Excluir posicao</button>
             </ActionBar>
           </Card>
         ))}
+      </div>
+      <div className="mt-5">
+        <Panel title="Organograma do cenario">
+          <div className="grid gap-3 lg:grid-cols-2">
+            {byCluster.map(([cluster, clusterItems]) => (
+              <div key={cluster} className="rounded-md border border-line bg-surface p-3">
+                <h3 className="font-semibold">{cluster}</h3>
+                <div className="mt-3 grid gap-2">
+                  {clusterItems.map((item) => (
+                    <div key={item.id} className="rounded-md border border-line bg-card px-3 py-2 text-sm">
+                      <strong className="block">{item.personName}</strong>
+                      <span className="text-muted">{item.role || "Cargo a definir"} | Reporte: {item.manager || "A definir"}</span>
+                      <span className="mt-1 block text-leaf">{item.categoryIds.length} categorias</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
       </div>
     </Panel>
   );
@@ -674,10 +893,32 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange }: { rows: Stakeho
 
 function SupplierPanel({ rows, onChange }: { rows: Supplier[]; onChange: (row: Supplier) => void }) {
   const [query, setQuery] = useState("");
-  const visible = rows.filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.relatedArea.toLowerCase().includes(query.toLowerCase()));
-  const [selected, setSelected] = useState(rows[0]?.id || "");
-  const row = rows.find((item) => item.id === selected) || visible[0] || rows[0];
+  const sourceRows = rows.length ? rows : suppliersInitial;
+  const visible = sourceRows.filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.relatedArea.toLowerCase().includes(query.toLowerCase()));
+  const [selected, setSelected] = useState(sourceRows[0]?.id || "");
+  const row = sourceRows.find((item) => item.id === selected) || visible[0] || sourceRows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
   if (!row) return null;
+  const current = draft || row;
+  const save = () => {
+    onChange(current);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!window.confirm("Tem certeza que deseja limpar tudo desta ficha de fornecedor? Nome, categoria e spend serao preservados.")) return;
+    setDraft({ ...current, relatedArea: "", criticality: "Media", contact: "", phone: "", email: "", firstInteraction: "", nextInteraction: "", relationshipStatus: "Mapear", meetings: 0, opportunities: "", risks: "", actionPlan: "", conversationDate: "", interactionStatus: "Nao iniciado", nextSteps: "", notes: "" });
+    setSaved(false);
+  };
   return (
     <Panel title="Fornecedores">
       <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -685,29 +926,29 @@ function SupplierPanel({ rows, onChange }: { rows: Supplier[]; onChange: (row: S
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar fornecedor ou area" />
           <Select label="Selecionar fornecedor" value={row.id} onChange={setSelected} options={visible.map((item) => item.id)} labels={Object.fromEntries(visible.map((item) => [item.id, `${item.name} | ${money(item.spend)}`]))} />
           <Panel title="Top 20 fornecedores">
-            <RankedRows items={rows.slice(0, 20).map((item) => [item.name, money(item.spend)])} />
+            <RankedRows items={sourceRows.slice(0, 20).map((item) => [item.name, money(item.spend)])} />
           </Panel>
         </div>
         <Card>
           <div className="grid gap-3 lg:grid-cols-2">
-            <ReadOnly label="Fornecedor" value={row.name} />
-            <ReadOnly label="Spend" value={money(row.spend)} />
-            <Select label="Area relacionada" value={row.relatedArea} onChange={(value) => onChange({ ...row, relatedArea: value })} options={["RH", "TI", "Juridico", "Marketing", "Financas", "Facilities", "Operacoes"]} />
-            <Select label="Criticidade" value={row.criticality} onChange={(value) => onChange({ ...row, criticality: value as Supplier["criticality"] })} options={["Alta", "Media", "Baixa"]} />
-            <Field label="Data da conversa" type="date" value={row.conversationDate} onChange={(value) => onChange({ ...row, conversationDate: value, firstInteraction: value })} />
-            <Field label="Status da interacao" value={row.interactionStatus} onChange={(value) => onChange({ ...row, interactionStatus: value, relationshipStatus: value })} />
-            <Field label="Contato principal" value={row.contact} onChange={(value) => onChange({ ...row, contact: value })} />
-            <Field label="Telefone" value={row.phone} onChange={(value) => onChange({ ...row, phone: value })} />
-            <Field label="E-mail" value={row.email} onChange={(value) => onChange({ ...row, email: value })} />
-            <Field label="Oportunidades" area value={row.opportunities} onChange={(value) => onChange({ ...row, opportunities: value })} />
-            <Field label="Riscos" area value={row.risks} onChange={(value) => onChange({ ...row, risks: value })} />
-            <Field label="Proximos passos" area value={row.nextSteps} onChange={(value) => onChange({ ...row, nextSteps: value, actionPlan: value })} />
-            <Field label="Anotacoes" area value={row.notes} onChange={(value) => onChange({ ...row, notes: value })} />
+            <ReadOnly label="Fornecedor" value={current.name} />
+            <ReadOnly label="Spend" value={money(current.spend)} />
+            <Select disabled={!editing} label="Area relacionada" value={current.relatedArea} onChange={(value) => setDraft({ ...current, relatedArea: value })} options={["", "RH", "TI", "Juridico", "Marketing", "Financas", "Facilities", "Operacoes"]} />
+            <Select disabled={!editing} label="Criticidade" value={current.criticality} onChange={(value) => setDraft({ ...current, criticality: value as Supplier["criticality"] })} options={["Alta", "Media", "Baixa"]} />
+            <Field disabled={!editing} label="Data da conversa" type="date" value={current.conversationDate} onChange={(value) => setDraft({ ...current, conversationDate: value, firstInteraction: value })} />
+            <Field disabled={!editing} label="Status da interacao" value={current.interactionStatus} onChange={(value) => setDraft({ ...current, interactionStatus: value, relationshipStatus: value })} />
+            <Field disabled={!editing} label="Contato principal" value={current.contact} onChange={(value) => setDraft({ ...current, contact: value })} />
+            <Field disabled={!editing} label="Telefone" value={current.phone} onChange={(value) => setDraft({ ...current, phone: value })} />
+            <Field disabled={!editing} label="E-mail" value={current.email} onChange={(value) => setDraft({ ...current, email: value })} />
+            <Field disabled={!editing} label="Oportunidades" area value={current.opportunities} onChange={(value) => setDraft({ ...current, opportunities: value })} />
+            <Field disabled={!editing} label="Riscos" area value={current.risks} onChange={(value) => setDraft({ ...current, risks: value })} />
+            <Field disabled={!editing} label="Proximos passos" area value={current.nextSteps} onChange={(value) => setDraft({ ...current, nextSteps: value, actionPlan: value })} />
+            <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
           </div>
+          <EditActions editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
           <ActionBar>
-            <button className="btn" onClick={() => onChange(row)}>Salvar</button>
-            <button className="btn" onClick={() => openWhatsApp(row.phone, `Ola, aqui e Wagner da Suzano. Podemos falar sobre ${row.name}?`)}>WhatsApp</button>
-            <button className="btn" onClick={() => downloadIcs(`Fornecedor - ${row.name}`, row.conversationDate, row.nextSteps || row.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
+            <button className="btn" onClick={() => openWhatsApp(current.phone, `Ola, aqui e Wagner da Suzano. Podemos falar sobre ${current.name}?`)}>WhatsApp</button>
+            <button className="btn" onClick={() => downloadIcs(`Fornecedor - ${current.name}`, current.conversationDate, current.nextSteps || current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
           </ActionBar>
         </Card>
       </div>
@@ -754,7 +995,7 @@ function Summary({ title, subtitle, meta }: { title: string; subtitle: string; m
   );
 }
 
-function AttachmentBox({ row, onChange }: { row: HandoverItem; onChange: (row: HandoverItem) => void }) {
+function AttachmentBox({ row, onChange, disabled }: { row: HandoverItem; onChange: (row: HandoverItem) => void; disabled?: boolean }) {
   async function attach(files: FileList | null) {
     if (!files?.length) return;
     const nextFiles = await Promise.all(Array.from(files).map(readFileAttachment));
@@ -764,7 +1005,7 @@ function AttachmentBox({ row, onChange }: { row: HandoverItem; onChange: (row: H
     <div className="mt-4 rounded-md border border-line bg-card p-3">
       <label className="btn cursor-pointer">
         <Paperclip size={16} /> Anexar arquivos
-        <input className="hidden" type="file" multiple onChange={(event) => attach(event.target.files)} />
+        <input className="hidden" disabled={disabled} type="file" multiple onChange={(event) => attach(event.target.files)} />
       </label>
       <div className="mt-3 grid gap-2">
         {row.attachments.map((file) => (
@@ -778,33 +1019,49 @@ function AttachmentBox({ row, onChange }: { row: HandoverItem; onChange: (row: H
   );
 }
 
-function Field({ label, value, onChange, area, type = "text" }: { label?: string; value: string; onChange: (value: string) => void; area?: boolean; type?: string }) {
+function Field({ label, value, onChange, area, type = "text", disabled }: { label?: string; value: string; onChange: (value: string) => void; area?: boolean; type?: string; disabled?: boolean }) {
   return (
     <label className="block">
       {label && <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>}
-      {area ? <textarea className="field min-h-24" value={value || ""} onChange={(event) => onChange(event.target.value)} /> : <input className="field" type={type} value={value || ""} onChange={(event) => onChange(event.target.value)} />}
+      {area ? <textarea className="field min-h-24 disabled:opacity-70" disabled={disabled} value={value || ""} onChange={(event) => onChange(event.target.value)} /> : <input className="field disabled:opacity-70" disabled={disabled} type={type} value={value || ""} onChange={(event) => onChange(event.target.value)} />}
     </label>
   );
 }
 
-function Select({ label, value, onChange, options, labels }: { label?: string; value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string> }) {
+function Select({ label, value, onChange, options, labels, disabled }: { label?: string; value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string>; disabled?: boolean }) {
   return (
     <label className="block">
       {label && <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>}
-      <select className="field" value={value || options[0] || ""} onChange={(event) => onChange(event.target.value)}>
+      <select className="field disabled:opacity-70" disabled={disabled} value={value || options[0] || ""} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => <option key={option} value={option}>{labels?.[option] || option}</option>)}
       </select>
     </label>
   );
 }
 
-function MultiSelect({ label, value, options, onChange }: { label: string; value: string[]; options: Category[]; onChange: (value: string[]) => void }) {
+function MultiSelect({ label, value, options, onChange, disabled }: { label: string; value: string[]; options: Category[]; onChange: (value: string[]) => void; disabled?: boolean }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
-      <select className="field min-h-32" multiple value={value} onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}>
+      <select className="field min-h-32 disabled:opacity-70" disabled={disabled} multiple value={value} onChange={(event) => onChange(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}>
         {options.map((option) => <option key={option.id} value={option.id}>{option.name} | {money(option.spend)}</option>)}
       </select>
+    </label>
+  );
+}
+
+function Slider({ label, value, onChange, disabled }: { label: string; value: number; onChange: (value: number) => void; disabled?: boolean }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
+      <div className="rounded-md border border-line bg-paper px-3 py-2">
+        <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+          <span className="text-muted">1 baixa aderencia</span>
+          <strong className="rounded border border-line px-2 py-1">{value || 3}</strong>
+          <span className="text-right text-muted">5 supera esperado</span>
+        </div>
+        <input className="w-full accent-leaf disabled:opacity-70" disabled={disabled} type="range" min="1" max="5" step="1" value={value || 3} onChange={(event) => onChange(Number(event.target.value))} />
+      </div>
     </label>
   );
 }
@@ -821,7 +1078,41 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
 function SaveBar({ updatedAt, onSave }: { updatedAt?: string; onSave: () => void }) {
   return (
     <ActionBar>
-      <button className="btn" onClick={onSave}>Salvar</button>
+      <button className="btn" onClick={onSave}><Save size={16} /> Salvar</button>
+      <span className="self-center text-sm text-muted">Ultima atualizacao: {formatDateTime(updatedAt || "")}</span>
+    </ActionBar>
+  );
+}
+
+function EditActions({
+  editing,
+  saved,
+  updatedAt,
+  onEdit,
+  onCancel,
+  onSave,
+  onClear
+}: {
+  editing: boolean;
+  saved: boolean;
+  updatedAt?: string;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <ActionBar>
+      {!editing ? (
+        <button className="btn" onClick={onEdit}><Edit3 size={16} /> Editar</button>
+      ) : (
+        <>
+          <button className="btn" onClick={onSave}><Save size={16} /> Salvar</button>
+          <button className="btn" onClick={onClear}><Trash2 size={16} /> Limpar tudo</button>
+          <button className="btn" onClick={onCancel}>Cancelar</button>
+        </>
+      )}
+      {saved && <Badge>Salvo</Badge>}
       <span className="self-center text-sm text-muted">Ultima atualizacao: {formatDateTime(updatedAt || "")}</span>
     </ActionBar>
   );
@@ -911,6 +1202,8 @@ function calculateMetrics(data: AppData) {
   const supplierGoal = Math.max(1, selectedSuppliers.length || prioritySuppliers.length);
   const supplierProgress = suppliersDone / supplierGoal;
   const pillarProgress = data.methodologyPillars.length ? pillarsDone / data.methodologyPillars.length : 0;
+  const assignedCategories = new Set(data.people.flatMap((person) => person.categoryIds || []));
+  const unassignedCategoryNames = data.categories.filter((category) => !assignedCategories.has(category.id)).map((category) => category.name);
   return {
     peopleDone,
     handoverDone,
@@ -925,12 +1218,27 @@ function calculateMetrics(data: AppData) {
     pillarProgress,
     overall: (peopleProgress + handoverProgress + stakeholderProgress + supplierProgress + pillarProgress) / 5,
     supplierSpend: data.suppliers.reduce((sum, item) => sum + Number(item.spend || 0), 0),
-    categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0)
+    topSupplierSpend: data.suppliers.slice(0, 20).reduce((sum, item) => sum + Number(item.spend || 0), 0),
+    categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0),
+    unassignedCategories: unassignedCategoryNames.length,
+    unassignedCategoryNames
   };
 }
 
 function labelsFor(categories: Category[], ids: string[]) {
   return ids.map((id) => categories.find((item) => item.id === id)?.name).filter(Boolean) as string[];
+}
+
+function handoverCluster(item: string) {
+  const seed = handoverChecklistSeed.find((row) => row.item === item);
+  if (seed?.cluster) return seed.cluster;
+  const lower = item.toLowerCase();
+  if (lower.includes("pessoa") || lower.includes("time") || lower.includes("sucessao")) return "Pessoas";
+  if (lower.includes("financeira") || lower.includes("quick wins")) return "Gestao financeira da area";
+  if (lower.includes("sap")) return "Tecnologia e SAP";
+  if (lower.includes("fornecedor") || lower.includes("contrato")) return "Contratos e fornecedores";
+  if (lower.includes("stakeholder") || lower.includes("politico")) return "Stakeholders";
+  return "Governanca e rotinas";
 }
 
 function spendFor(categories: Category[], ids: string[]) {

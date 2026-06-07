@@ -26,6 +26,11 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Atalho de WhatsApp para fornecedores
 - Anexos persistidos em itens de handover
 - Contador de acessos e alteracoes
+- Modo Editar/Salvar/Limpar com confirmacao nos modulos operacionais
+- Sliders 1-5 de hard skills e soft skills em Pessoas
+- Controle de categorias nao atribuidas e matriz pessoa x categorias
+- Handover agrupavel por cluster
+- Cenarios de estrutura com pessoas, reportes, clusters, categorias e organograma gerado
 - Banco Supabase com RLS por usuario
 - Seed automatico por usuario novo
 
@@ -62,8 +67,9 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 2. Execute o SQL em `supabase/migrations/20260605180000_initial_schema.sql` no SQL Editor.
 3. Execute o SQL incremental em `supabase/migrations/20260605203000_first100days_expansion.sql`.
 4. Execute o SQL incremental em `supabase/migrations/20260607120000_functional_adjustments.sql`.
-5. Confira se Auth esta habilitado com e-mail/senha.
-6. Crie um usuario pelo app. Os triggers de seed populam os dados iniciais e os modulos expandidos para esse usuario.
+5. Execute o SQL incremental em `supabase/migrations/20260607153000_final_operational_adjustments.sql`.
+6. Confira se Auth esta habilitado com e-mail/senha.
+7. Crie um usuario pelo app. Os triggers de seed populam os dados iniciais e os modulos expandidos para esse usuario.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -84,6 +90,8 @@ Notas funcionais:
 - O progresso geral considera Pessoas, Handover Thais, Stakeholders, Fornecedores e Pilares dos 100 dias.
 - O modo claro/escuro usa upsert por `user_id` em `user_preferences`, evitando duplicidade de preferencia.
 - Anexos do handover sao salvos em `handover_checklist.attachments` como JSON para permitir download posterior.
+- Se fornecedores ou categorias estiverem vazios para um usuario existente, o app repopula essas tabelas a partir das planilhas no proximo carregamento.
+- A migration final adiciona `hard_skills_score`, `soft_skills_score` e `handover_checklist.cluster`, alem de trigger para classificar novos itens de handover.
 
 ## GitHub Pages
 

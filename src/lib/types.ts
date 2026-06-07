@@ -18,6 +18,8 @@ export type Person = {
   potentialNotes: string;
   hardSkills: string;
   softSkills: string;
+  hardSkillsScore: number;
+  softSkillsScore: number;
   strengths: string;
   attentionPoints: string;
   risks: string;
@@ -110,6 +112,7 @@ export type HandoverItem = {
   item: string;
   status: Status;
   comment: string;
+  cluster: string;
   owner: string;
   dueDate: string;
   links: string;
