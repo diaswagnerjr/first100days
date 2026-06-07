@@ -7,6 +7,7 @@ export type Person = {
   role: string;
   cluster: string;
   portfolios: string;
+  categoryIds: string[];
   firstOneOnOne: string;
   nextConversation: string;
   agendaStatus: string;
@@ -14,6 +15,9 @@ export type Person = {
   sommosScore: number;
   performance: number;
   potential: number;
+  potentialNotes: string;
+  hardSkills: string;
+  softSkills: string;
   strengths: string;
   attentionPoints: string;
   risks: string;
@@ -31,7 +35,9 @@ export type Stakeholder = {
   criticality: Priority;
   relationship: Priority;
   firstConversation: string;
+  conversationDate: string;
   nextConversation: string;
+  interactionStatus: string;
   expectations: string;
   pains: string;
   opportunities: string;
@@ -57,6 +63,9 @@ export type Supplier = {
   opportunities: string;
   risks: string;
   actionPlan: string;
+  conversationDate: string;
+  interactionStatus: string;
+  nextSteps: string;
   notes: string;
 };
 
@@ -90,6 +99,10 @@ export type MethodologyPillar = {
   decisionDate: string;
   evidence: string;
   comments: string;
+  explanation: string;
+  expected: string;
+  nextSteps: string;
+  updatedAt: string;
 };
 
 export type HandoverItem = {
@@ -100,6 +113,8 @@ export type HandoverItem = {
   owner: string;
   dueDate: string;
   links: string;
+  attachments: Attachment[];
+  updatedAt: string;
 };
 
 export type OrgScenario = {
@@ -119,12 +134,27 @@ export type OrgScenarioItem = {
   role: string;
   cluster: string;
   manager: string;
+  categoryIds: string[];
+  spendResponsibility: number;
   notes: string;
 };
 
 export type UserPreference = {
   id: string;
   theme: "light" | "dark";
+  accessCount: number;
+  mutationCount: number;
+  lastAccessedAt: string;
+  previousAccessedAt: string;
+};
+
+export type Attachment = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+  uploadedAt: string;
 };
 
 export type AppData = {

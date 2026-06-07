@@ -27,7 +27,7 @@ const inferArea = (name: string, index: number) => {
 
 export const peopleSeed: Person[] = [
   ["Juliana Cardoso Gomes", "Coordenadora"],
-  ["Joao Victor", "Analista Sr"],
+  ["João Victor", "Analista Sr"],
   ["Thais Gois", "Consultora"],
   ["Pedro Escobar", "Analista Sr"],
   ["Bruna Ferreira", "Analista Pl"],
@@ -36,13 +36,14 @@ export const peopleSeed: Person[] = [
   ["Denis", "Analista Sr"],
   ["Rhenan Caetano", "Analista Sr"],
   ["Rafael Iury", "Analista Pl"],
-  ["Isabella da Silva", "Estagiaria"]
+  ["Isabella da Silva", "Estagiária"]
 ].map(([name, role], index) => ({
   id: id("person", index),
   name,
   role,
   cluster: index === 0 ? "Lideranca" : "A definir",
   portfolios: "",
+  categoryIds: [],
   firstOneOnOne: "",
   nextConversation: "",
   agendaStatus: "Agendar 1:1",
@@ -50,6 +51,9 @@ export const peopleSeed: Person[] = [
   sommosScore: 0,
   performance: 3,
   potential: 3,
+  potentialNotes: "",
+  hardSkills: "",
+  softSkills: "",
   strengths: "",
   attentionPoints: "",
   risks: "",
@@ -75,7 +79,9 @@ export const stakeholdersSeed: Stakeholder[] = [
   criticality: index === 0 ? "Alta" : "Media",
   relationship: "Media",
   firstConversation: "",
+  conversationDate: "",
   nextConversation: "",
+  interactionStatus: "Nao iniciado",
   expectations: "",
   pains: "",
   opportunities: "",
@@ -101,6 +107,9 @@ export const suppliersInitial: Supplier[] = suppliersSeed.map((item, index) => (
   opportunities: item.opportunities,
   risks: item.risks,
   actionPlan: item.action_plan,
+  conversationDate: "",
+  interactionStatus: "Nao iniciado",
+  nextSteps: "",
   notes: ""
 }));
 
@@ -116,22 +125,28 @@ export const categoriesInitial: Category[] = categoriesSeed.map((item, index) =>
   spend: item.spend
 }));
 
-export const methodologyPillarsSeed: MethodologyPillar[] = [
-  "Match Strategy to Situation",
-  "Accelerate Learning",
-  "Build Coalitions",
-  "Secure Early Wins",
-  "Align Structure",
-  "Build Your Team",
-  "Create a Vision"
-].map((name, index) => ({
+const pillarDetails = [
+  ["Match Strategy to Situation", "Diagnosticar se a situacao pede turnaround, realignment, sustaining success ou startup.", "Definir a leitura da situacao e adaptar prioridades, tom e ritmo."],
+  ["Accelerate Learning", "Aprender rapido sobre negocio, pessoas, contratos, fornecedores e governanca.", "Registrar hipoteses, evidencias e aprendizados antes de decidir."],
+  ["Build Coalitions", "Construir apoio com stakeholders criticos e patrocinadores.", "Mapear aliados, resistencias e compromissos."],
+  ["Secure Early Wins", "Escolher vitorias iniciais criveis e visiveis.", "Criar tracao sem dispersar energia do plano principal."],
+  ["Align Structure", "Ajustar desenho organizacional, rotinas e responsabilidades.", "Propor estrutura coerente com categorias, spend e capacidades."],
+  ["Build Your Team", "Avaliar o time, potenciais, riscos, sucessao e desenvolvimento.", "Ter plano claro por pessoa e por carteira."],
+  ["Create a Vision", "Consolidar narrativa e direcao pos-100 dias.", "Preparar mensagem para diretoria e plano de continuidade."]
+];
+
+export const methodologyPillarsSeed: MethodologyPillar[] = pillarDetails.map(([name, explanation, expected], index) => ({
   id: id("pillar", index),
   name,
   status: "Nao iniciado",
   decision: "",
   decisionDate: "",
   evidence: "",
-  comments: ""
+  comments: "",
+  explanation,
+  expected,
+  nextSteps: "",
+  updatedAt: ""
 }));
 
 export const handoverChecklistSeed: HandoverItem[] = [
@@ -144,21 +159,24 @@ export const handoverChecklistSeed: HandoverItem[] = [
   "Pipeline de sourcing",
   "Oportunidades financeiras",
   "Riscos atuais",
-  "Problemas de performance",
-  "Situacao de cada pessoa do time",
+  "Performance de cada pessoa do time",
+  "Potenciais e sucessao",
+  "Pontos de atencao do time",
+  "Historico de decisoes relevantes",
   "Temas pendentes de SAP/S4",
   "Quick wins ja mapeados",
-  "Historico de decisoes relevantes",
   "Pontos politicos sensiveis",
-  "Recomendacoes da Juliana"
+  "Recomendacoes da Thais"
 ].map((item, index) => ({
   id: id("handover", index),
   item,
   status: "Nao iniciado",
   comment: "",
-  owner: "Wagner / Juliana",
+  owner: "Wagner / Thais",
   dueDate: "",
-  links: ""
+  links: "",
+  attachments: [],
+  updatedAt: ""
 }));
 
 export const orgScenariosSeed: OrgScenario[] = [
@@ -179,7 +197,9 @@ export const orgScenarioItemsSeed: OrgScenarioItem[] = peopleSeed.map((person, i
   personName: person.name,
   role: person.role,
   cluster: person.cluster,
-  manager: "Juliana Cardoso Gomes",
+  manager: "Thais Gois",
+  categoryIds: [],
+  spendResponsibility: 0,
   notes: ""
 }));
 
@@ -194,7 +214,11 @@ export const initialData: AppData = {
   orgScenarioItems: orgScenarioItemsSeed,
   userPreferences: {
     id: "preferences-local",
-    theme: "light"
+    theme: "light",
+    accessCount: 0,
+    mutationCount: 0,
+    lastAccessedAt: "",
+    previousAccessedAt: ""
   },
   diagnosis: {
     id: "diagnosis-001",
