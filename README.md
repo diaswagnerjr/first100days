@@ -31,6 +31,7 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Controle de categorias nao atribuidas e matriz pessoa x categorias
 - Handover agrupavel por cluster
 - Cenarios de estrutura com pessoas, reportes, clusters, categorias e organograma gerado
+- Acesso restrito ao editor `diaswagnerjr@gmail.com` e ao visualizador `visualizador@suzano.com.br`
 - Banco Supabase com RLS por usuario
 - Seed automatico por usuario novo
 
@@ -68,8 +69,9 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 3. Execute o SQL incremental em `supabase/migrations/20260605203000_first100days_expansion.sql`.
 4. Execute o SQL incremental em `supabase/migrations/20260607120000_functional_adjustments.sql`.
 5. Execute o SQL incremental em `supabase/migrations/20260607153000_final_operational_adjustments.sql`.
-6. Confira se Auth esta habilitado com e-mail/senha.
-7. Crie um usuario pelo app. Os triggers de seed populam os dados iniciais e os modulos expandidos para esse usuario.
+6. Execute o SQL incremental em `supabase/migrations/20260607165000_owner_viewer_access.sql`.
+7. Confira se Auth esta habilitado com e-mail/senha.
+8. Crie ou confirme o usuario visualizador `visualizador@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -92,6 +94,7 @@ Notas funcionais:
 - Anexos do handover sao salvos em `handover_checklist.attachments` como JSON para permitir download posterior.
 - Se fornecedores ou categorias estiverem vazios para um usuario existente, o app repopula essas tabelas a partir das planilhas no proximo carregamento.
 - A migration final adiciona `hard_skills_score`, `soft_skills_score` e `handover_checklist.cluster`, alem de trigger para classificar novos itens de handover.
+- A migration de acesso troca as policies para permitir escrita somente ao usuario principal e leitura ao visualizador autorizado.
 
 ## GitHub Pages
 

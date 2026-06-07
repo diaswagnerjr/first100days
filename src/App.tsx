@@ -63,6 +63,8 @@ type CollectionKey =
   | "orgScenarioItems";
 
 const firstDay = new Date(import.meta.env.VITE_FIRST_DAY || "2026-06-05");
+const OWNER_EMAIL = "diaswagnerjr@gmail.com";
+const VIEWER_EMAIL = "visualizador@suzano.com.br";
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -194,23 +196,27 @@ function App() {
   }, []);
 
   const metrics = useMemo(() => calculateMetrics(data), [data]);
+  const currentEmail = session?.user.email?.toLowerCase() || "";
+  const canEdit = !isSupabaseConfigured || currentEmail === OWNER_EMAIL;
 
   async function loadCloudData(userId: string) {
     if (!supabase) return;
+    const isViewer = session?.user.email?.toLowerCase() === VIEWER_EMAIL;
     setLoading(true);
     setError("");
     try {
+      const withUser = <T extends { eq: (column: string, value: string) => T }>(query: T) => isViewer ? query : query.eq("user_id", userId);
       const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, scenarios, scenarioItems, preferences] = await Promise.all([
-        supabase.from(tableNames.people).select("*").eq("user_id", userId).order("name"),
-        supabase.from(tableNames.stakeholders).select("*").eq("user_id", userId).order("name"),
-        supabase.from(tableNames.suppliers).select("*").eq("user_id", userId).order("spend", { ascending: false }),
-        supabase.from(tableNames.categories).select("*").eq("user_id", userId).order("spend", { ascending: false }),
-        supabase.from(tableNames.diagnosis).select("*").eq("user_id", userId).maybeSingle(),
-        supabase.from(tableNames.methodologyPillars).select("*").eq("user_id", userId).order("name"),
-        supabase.from(tableNames.handoverChecklist).select("*").eq("user_id", userId).order("item"),
-        supabase.from(tableNames.orgScenarios).select("*").eq("user_id", userId).order("name"),
-        supabase.from(tableNames.orgScenarioItems).select("*").eq("user_id", userId).order("person_name"),
-        supabase.from(tableNames.userPreferences).select("*").eq("user_id", userId).maybeSingle()
+        withUser(supabase.from(tableNames.people).select("*")).order("name"),
+        withUser(supabase.from(tableNames.stakeholders).select("*")).order("name"),
+        withUser(supabase.from(tableNames.suppliers).select("*")).order("spend", { ascending: false }),
+        withUser(supabase.from(tableNames.categories).select("*")).order("spend", { ascending: false }),
+        withUser(supabase.from(tableNames.diagnosis).select("*")).maybeSingle(),
+        withUser(supabase.from(tableNames.methodologyPillars).select("*")).order("name"),
+        withUser(supabase.from(tableNames.handoverChecklist).select("*")).order("item"),
+        withUser(supabase.from(tableNames.orgScenarios).select("*")).order("name"),
+        withUser(supabase.from(tableNames.orgScenarioItems).select("*")).order("person_name"),
+        withUser(supabase.from(tableNames.userPreferences).select("*")).maybeSingle()
       ]);
       const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
       if (failures.length) throw failures[0];
@@ -218,12 +224,17 @@ function App() {
         await ensureInitialData(userId);
         return loadCloudData(userId);
       }
-      if (!suppliers.data?.length || !categories.data?.length) {
-        await ensureSpendData(userId, !suppliers.data?.length, !categories.data?.length);
+      if (!isViewer && needsSeedReconcile(people.data, stakeholders.data, suppliers.data, categories.data)) {
+        await reconcileSeedData(userId, {
+          people: people.data?.map((row) => normalizePerson(fromSnake<Person>(row))) ?? [],
+          stakeholders: stakeholders.data?.map((row) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? [],
+          suppliers: suppliers.data?.map((row) => normalizeSupplier(fromSnake<Supplier>(row))) ?? [],
+          categories: categories.data?.map((row) => fromSnake<Category>(row)) ?? []
+        });
         return loadCloudData(userId);
       }
       const pref = normalizePreferences(preferences.data ? fromSnake<UserPreference>(preferences.data) : initialData.userPreferences);
-      const nextPref = await recordAccess(userId, pref);
+      const nextPref = isViewer ? pref : await recordAccess(userId, pref);
       setData({
         people: people.data.map((row) => normalizePerson(fromSnake<Person>(row))),
         stakeholders: stakeholders.data?.map((row) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? initialData.stakeholders,
@@ -283,17 +294,35 @@ function App() {
     ]);
   }
 
-  async function ensureSpendData(userId: string, needsSuppliers: boolean, needsCategories: boolean) {
+  function needsSeedReconcile(people: unknown[] | null, stakeholders: unknown[] | null, suppliers: unknown[] | null, categories: unknown[] | null) {
+    return (people?.length || 0) < peopleSeed.length
+      || (stakeholders?.length || 0) < stakeholdersSeed.length
+      || (suppliers?.length || 0) < 20
+      || (categories?.length || 0) < categoriesInitial.length;
+  }
+
+  async function reconcileSeedData(
+    userId: string,
+    current: { people: Person[]; stakeholders: Stakeholder[]; suppliers: Supplier[]; categories: Category[] }
+  ) {
     if (!supabase) return;
     const client = supabase;
-    const insertMany = async (collection: CollectionKey, rows: Array<{ id: string }>) => {
-      await client.from(tableNames[collection]).insert(rows.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
+    const insertMissing = async <T extends { id: string; name: string }>(collection: CollectionKey, seedRows: T[], existingRows: T[]) => {
+      const existingNames = new Set(existingRows.map((row) => row.name.toLowerCase()));
+      const missing = seedRows.filter((row) => !existingNames.has(row.name.toLowerCase()));
+      if (missing.length) await client.from(tableNames[collection]).insert(missing.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
     };
-    if (needsSuppliers) await insertMany("suppliers", suppliersInitial);
-    if (needsCategories) await insertMany("categories", categoriesInitial);
+    await insertMissing("people", peopleSeed, current.people);
+    await insertMissing("stakeholders", stakeholdersSeed, current.stakeholders);
+    await insertMissing("suppliers", suppliersInitial, current.suppliers);
+    await insertMissing("categories", categoriesInitial, current.categories);
   }
 
   async function upsertRow<T extends { id: string }>(collection: CollectionKey, row: T) {
+    if (isSupabaseConfigured && !canEdit) {
+      setError("Usuario visualizador nao pode salvar alteracoes.");
+      return;
+    }
     const stamped = ["methodologyPillars", "handoverChecklist"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
     setData((current) => {
       const nextRows = (current[collection] as Array<{ id: string }>).map((item) => (item.id === row.id ? stamped : item));
@@ -306,6 +335,10 @@ function App() {
   }
 
   async function addRow(collection: CollectionKey, overrides: Record<string, unknown> = {}) {
+    if (isSupabaseConfigured && !canEdit) {
+      setError("Usuario visualizador nao pode criar registros.");
+      return "";
+    }
     const base = emptyRows[collection];
     const row = { ...base, ...overrides, id: crypto.randomUUID(), name: "name" in base ? `Novo ${base.name}` : overrides.name } as unknown as { id: string };
     if (collection === "orgScenarioItems" && !("scenarioId" in overrides)) (row as OrgScenarioItem).scenarioId = data.orgScenarios[0]?.id || "";
@@ -318,6 +351,10 @@ function App() {
   }
 
   async function deleteRow(collection: CollectionKey, id: string) {
+    if (isSupabaseConfigured && !canEdit) {
+      setError("Usuario visualizador nao pode excluir registros.");
+      return;
+    }
     setData((current) => ({ ...current, [collection]: (current[collection] as Array<{ id: string }>).filter((item) => item.id !== id) } as AppData));
     if (!supabase || !session?.user.id) return;
     const { error: saveError } = await supabase.from(tableNames[collection]).delete().eq("id", id).eq("user_id", session.user.id);
@@ -326,6 +363,10 @@ function App() {
   }
 
   async function updateDiagnosis(next: Diagnosis) {
+    if (isSupabaseConfigured && !canEdit) {
+      setError("Usuario visualizador nao pode salvar alteracoes.");
+      return;
+    }
     setData((current) => ({ ...current, diagnosis: next }));
     if (!supabase || !session?.user.id) return;
     const { error: saveError } = await supabase.from(tableNames.diagnosis).upsert({ ...toSnake(next as unknown as Record<string, unknown>, session.user.id), id: next.id });
@@ -342,6 +383,10 @@ function App() {
   }
 
   async function duplicateScenario(scenario: OrgScenario) {
+    if (isSupabaseConfigured && !canEdit) {
+      setError("Usuario visualizador nao pode criar cenarios.");
+      return;
+    }
     const newId = crypto.randomUUID();
     const clone = { ...scenario, id: newId, name: `${scenario.name} - copia`, status: "Mapear" as OrgScenario["status"] };
     const clonedItems = data.orgScenarioItems
@@ -355,6 +400,10 @@ function App() {
   }
 
   async function addScenarioWithPeople() {
+    if (isSupabaseConfigured && !canEdit) {
+      setError("Usuario visualizador nao pode criar cenarios.");
+      return;
+    }
     const newId = crypto.randomUUID();
     const scenario: OrgScenario = {
       id: newId,
@@ -406,6 +455,7 @@ function App() {
               {data.userPreferences.theme === "light" ? "Escuro" : "Claro"}
             </button>
             {session && <button onClick={signOut} className="btn"><LogOut size={16} /> Sair</button>}
+            {session && <Badge tone={canEdit ? "ok" : "warn"}>{canEdit ? "Editor" : "Visualizador"}</Badge>}
           </div>
         </div>
       </header>
@@ -426,11 +476,12 @@ function App() {
         <main className="min-w-0">
           {error && <div className="mb-4 rounded-md border border-coral/40 bg-coral/10 p-3 text-sm">{error}</div>}
           {activeTab === "dashboard" && <Dashboard dayState={dayState} data={data} metrics={metrics} />}
-          {activeTab === "pillars" && <PillarsPanel rows={data.methodologyPillars} onChange={(row) => upsertRow("methodologyPillars", row)} />}
-          {activeTab === "people" && <PeoplePanel rows={data.people} categories={data.categories} onChange={(row) => upsertRow("people", row)} />}
-          {activeTab === "handover" && <HandoverPanel rows={data.handoverChecklist} onChange={(row) => upsertRow("handoverChecklist", row)} />}
+          {activeTab === "pillars" && <PillarsPanel canEdit={canEdit} rows={data.methodologyPillars} onChange={(row) => upsertRow("methodologyPillars", row)} />}
+          {activeTab === "people" && <PeoplePanel canEdit={canEdit} rows={data.people} categories={data.categories} onChange={(row) => upsertRow("people", row)} />}
+          {activeTab === "handover" && <HandoverPanel canEdit={canEdit} rows={data.handoverChecklist} onChange={(row) => upsertRow("handoverChecklist", row)} />}
           {activeTab === "org" && (
             <OrgPanel
+              canEdit={canEdit}
               scenarios={data.orgScenarios}
               items={data.orgScenarioItems}
               people={data.people}
@@ -445,7 +496,7 @@ function App() {
             />
           )}
           {activeTab === "stakeholders" && <StakeholderPanel rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado" })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
-          {activeTab === "suppliers" && <SupplierPanel rows={data.suppliers} onChange={(row) => upsertRow("suppliers", row)} />}
+          {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} onChange={(row) => upsertRow("suppliers", row)} />}
           {activeTab === "diagnosis" && <DiagnosisPanel diagnosis={data.diagnosis} onChange={updateDiagnosis} />}
         </main>
       </div>
@@ -456,29 +507,39 @@ function App() {
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [message, setMessage] = useState("");
-  async function submit(event: FormEvent) {
+  async function submit(event: FormEvent, override?: { email: string; password: string }) {
     event.preventDefault();
     if (!supabase) return;
     setMessage("");
-    const result = mode === "login" ? await supabase.auth.signInWithPassword({ email, password }) : await supabase.auth.signUp({ email, password });
-    setMessage(result.error ? result.error.message : mode === "login" ? "Login realizado." : "Conta criada. Confirme o e-mail se solicitado.");
+    const credentials = override || { email, password };
+    if (![OWNER_EMAIL, VIEWER_EMAIL].includes(credentials.email.toLowerCase())) {
+      setMessage("Acesso restrito ao usuario principal e ao visualizador autorizado.");
+      return;
+    }
+    const result = await supabase.auth.signInWithPassword(credentials);
+    setMessage(result.error ? result.error.message : "Login realizado.");
   }
+  const enterViewer = async () => {
+    if (!supabase) return;
+    setMessage("");
+    const result = await supabase.auth.signInWithPassword({ email: VIEWER_EMAIL, password: "123456!" });
+    setMessage(result.error ? result.error.message : "Login realizado.");
+  };
   return (
     <Shell>
       <div className="grid min-h-screen place-items-center px-4 py-10">
         <form onSubmit={submit} className="w-full max-w-md rounded-md border border-line bg-card p-6 shadow-soft">
           <p className="text-sm font-medium text-leaf">Suzano</p>
           <h1 className="mt-1 text-2xl font-semibold">Plano Gerencia de Suprimentos Corporativo Onboarding</h1>
-          <div className="mt-5 grid grid-cols-2 rounded-md border border-line p-1">
-            <button type="button" onClick={() => setMode("login")} className={`rounded px-3 py-2 text-sm ${mode === "login" ? "bg-ink text-white" : ""}`}>Login</button>
-            <button type="button" onClick={() => setMode("signup")} className={`rounded px-3 py-2 text-sm ${mode === "signup" ? "bg-ink text-white" : ""}`}>Registrar</button>
+          <div className="mt-5 grid gap-2 rounded-md border border-line p-2">
+            <button type="button" className="rounded bg-ink px-3 py-2 text-sm text-white">Editor Wagner</button>
+            <button type="button" onClick={enterViewer} className="rounded border border-line px-3 py-2 text-sm">Entrar como visualizador</button>
           </div>
           <div className="mt-5 space-y-3">
             <input className="field" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
             <input className="field" placeholder="Senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button className="focus-ring w-full rounded-md bg-leaf px-4 py-2 font-semibold text-white">{mode === "login" ? "Entrar" : "Criar conta"}</button>
+            <button className="focus-ring w-full rounded-md bg-leaf px-4 py-2 font-semibold text-white">Entrar como editor</button>
           </div>
           {message && <p className="mt-4 text-sm text-coral">{message}</p>}
         </form>
@@ -496,7 +557,7 @@ function Dashboard({ dayState, data, metrics }: { dayState: { elapsed: number; p
         <Metric title="Pessoas" value={`${metrics.peopleDone}/${data.people.length}`} note="pessoas conversadas" />
         <Metric title="Handover Thais" value={`${metrics.handoverDone}/${data.handoverChecklist.length}`} note="pontos concluidos" />
         <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${data.stakeholders.length}`} note="conversados" />
-        <Metric title="Fornecedores" value={`${metrics.suppliersDone}/${metrics.supplierGoal}`} note="interacoes" />
+        <Metric title="Fornecedores" value={`${metrics.suppliersDone}/${metrics.supplierGoal}`} note="fichas preenchidas" />
       </section>
 
       <section className="grid gap-3 md:grid-cols-4">
@@ -549,7 +610,7 @@ function Dashboard({ dayState, data, metrics }: { dayState: { elapsed: number; p
   );
 }
 
-function PillarsPanel({ rows, onChange }: { rows: MethodologyPillar[]; onChange: (row: MethodologyPillar) => void }) {
+function PillarsPanel({ rows, onChange, canEdit }: { rows: MethodologyPillar[]; onChange: (row: MethodologyPillar) => void; canEdit: boolean }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || rows[0];
   const [draft, setDraft] = useState(row);
@@ -592,13 +653,13 @@ function PillarsPanel({ rows, onChange }: { rows: MethodologyPillar[]; onChange:
           <Field disabled={!editing} label="Proximos passos" area value={current.nextSteps} onChange={(value) => setDraft({ ...current, nextSteps: value })} />
           <Field disabled={!editing} label="Comentarios" area value={current.comments} onChange={(value) => setDraft({ ...current, comments: value })} />
         </div>
-        <EditActions editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+        <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
       </CardLayout>
     </Panel>
   );
 }
 
-function PeoplePanel({ rows, categories, onChange }: { rows: Person[]; categories: Category[]; onChange: (row: Person) => void }) {
+function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; categories: Category[]; onChange: (row: Person) => void; canEdit: boolean }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || rows[0];
   const [draft, setDraft] = useState(row);
@@ -672,7 +733,7 @@ function PeoplePanel({ rows, categories, onChange }: { rows: Person[]; categorie
           <Field disabled={!editing} label="Plano de desenvolvimento" area value={current.development} onChange={(value) => setDraft({ ...current, development: value })} />
           <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
         </div>
-        <EditActions editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+        <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
         <ActionBar>
           <button className="btn" onClick={() => downloadIcs(`1:1 - ${current.name}`, current.firstOneOnOne, current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
         </ActionBar>
@@ -692,7 +753,7 @@ function PeoplePanel({ rows, categories, onChange }: { rows: Person[]; categorie
   );
 }
 
-function HandoverPanel({ rows, onChange }: { rows: HandoverItem[]; onChange: (row: HandoverItem) => void }) {
+function HandoverPanel({ rows, onChange, canEdit }: { rows: HandoverItem[]; onChange: (row: HandoverItem) => void; canEdit: boolean }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const [sortByCluster, setSortByCluster] = useState(false);
   const sortedRows = sortByCluster ? [...rows].sort((a, b) => `${a.cluster || handoverCluster(a.item)}-${a.item}`.localeCompare(`${b.cluster || handoverCluster(b.item)}-${b.item}`)) : rows;
@@ -733,13 +794,14 @@ function HandoverPanel({ rows, onChange }: { rows: HandoverItem[]; onChange: (ro
           <Field disabled={!editing} label="Links" area value={current.links} onChange={(value) => setDraft({ ...current, links: value })} />
         </div>
         <AttachmentBox disabled={!editing} row={current} onChange={setDraft} />
-        <EditActions editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+        <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
       </CardLayout>
     </Panel>
   );
 }
 
 function OrgPanel({
+  canEdit,
   scenarios,
   items,
   people,
@@ -752,6 +814,7 @@ function OrgPanel({
   onScenario,
   onItem
 }: {
+  canEdit: boolean;
   scenarios: OrgScenario[];
   items: OrgScenarioItem[];
   people: Person[];
@@ -809,7 +872,7 @@ function OrgPanel({
         <Field disabled={!editing} label="Riscos" area value={scenario.risks} onChange={(value) => onScenario({ ...scenario, risks: value })} />
         <Field disabled={!editing} label="Decisoes" area value={scenario.recommendedDecision} onChange={(value) => onScenario({ ...scenario, recommendedDecision: value })} />
       </div>
-      <EditActions editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => setEditing(false)} onSave={saveScenario} onClear={clearScenario} />
+      <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => setEditing(false)} onSave={saveScenario} onClear={clearScenario} />
       <div className="mt-5 flex justify-between">
         <h3 className="font-semibold">Pessoas, reportes, clusters e categorias</h3>
         <button className="btn" onClick={() => addItem(scenario.id)}>Adicionar posicao</button>
@@ -891,12 +954,13 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange }: { rows: Stakeho
   );
 }
 
-function SupplierPanel({ rows, onChange }: { rows: Supplier[]; onChange: (row: Supplier) => void }) {
+function SupplierPanel({ rows, onChange, canEdit }: { rows: Supplier[]; onChange: (row: Supplier) => void; canEdit: boolean }) {
   const [query, setQuery] = useState("");
   const sourceRows = rows.length ? rows : suppliersInitial;
   const visible = sourceRows.filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.relatedArea.toLowerCase().includes(query.toLowerCase()));
   const [selected, setSelected] = useState(sourceRows[0]?.id || "");
   const row = sourceRows.find((item) => item.id === selected) || visible[0] || sourceRows[0];
+  const touchedSuppliers = sourceRows.filter(isSupplierScoped);
   const [draft, setDraft] = useState(row);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -926,7 +990,10 @@ function SupplierPanel({ rows, onChange }: { rows: Supplier[]; onChange: (row: S
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar fornecedor ou area" />
           <Select label="Selecionar fornecedor" value={row.id} onChange={setSelected} options={visible.map((item) => item.id)} labels={Object.fromEntries(visible.map((item) => [item.id, `${item.name} | ${money(item.spend)}`]))} />
           <Panel title="Top 20 fornecedores">
-            <RankedRows items={sourceRows.slice(0, 20).map((item) => [item.name, money(item.spend)])} />
+            <SupplierRows rows={sourceRows.slice(0, 20)} onSelect={setSelected} selected={row.id} />
+          </Panel>
+          <Panel title="Fornecedores preenchidos para falar">
+            {touchedSuppliers.length ? <SupplierRows rows={touchedSuppliers} onSelect={setSelected} selected={row.id} /> : <p className="text-sm text-muted">Nenhum fornecedor preenchido ainda.</p>}
           </Panel>
         </div>
         <Card>
@@ -945,7 +1012,7 @@ function SupplierPanel({ rows, onChange }: { rows: Supplier[]; onChange: (row: S
             <Field disabled={!editing} label="Proximos passos" area value={current.nextSteps} onChange={(value) => setDraft({ ...current, nextSteps: value, actionPlan: value })} />
             <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
           </div>
-          <EditActions editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+          <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
           <ActionBar>
             <button className="btn" onClick={() => openWhatsApp(current.phone, `Ola, aqui e Wagner da Suzano. Podemos falar sobre ${current.name}?`)}>WhatsApp</button>
             <button className="btn" onClick={() => downloadIcs(`Fornecedor - ${current.name}`, current.conversationDate, current.nextSteps || current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
@@ -1093,6 +1160,7 @@ function EditActions({
   onSave,
   onClear
 }: {
+  canEdit?: boolean;
   editing: boolean;
   saved: boolean;
   updatedAt?: string;
@@ -1101,6 +1169,14 @@ function EditActions({
   onSave: () => void;
   onClear: () => void;
 }) {
+  if (!canEdit) {
+    return (
+      <ActionBar>
+        <Badge tone="warn">Somente leitura</Badge>
+        <span className="self-center text-sm text-muted">Ultima atualizacao: {formatDateTime(updatedAt || "")}</span>
+      </ActionBar>
+    );
+  }
   return (
     <ActionBar>
       {!editing ? (
@@ -1184,6 +1260,33 @@ function RankedRows({ items }: { items: string[][] }) {
   );
 }
 
+function SupplierRows({ rows, selected, onSelect }: { rows: Supplier[]; selected: string; onSelect: (id: string) => void }) {
+  return (
+    <div className="mt-3 space-y-2">
+      {rows.map((item, index) => {
+        const touched = isSupplierScoped(item);
+        return (
+          <button
+            key={item.id}
+            className={`grid w-full grid-cols-[28px_1fr_auto] items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${
+              selected === item.id
+                ? "border-leaf bg-leaf/15"
+                : touched
+                  ? "border-leaf/40 bg-leaf/10"
+                  : "border-line bg-surface"
+            }`}
+            onClick={() => onSelect(item.id)}
+          >
+            <span className="font-semibold text-leaf">{index + 1}</span>
+            <span className="truncate">{item.name}</span>
+            <strong className="text-right">{touched ? "Preenchido" : money(item.spend)}</strong>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Badge({ children, tone = "ok" }: { children: ReactNode; tone?: "ok" | "warn" }) {
   return <span className={`rounded-md border px-3 py-2 text-sm ${tone === "warn" ? "border-coral/30 bg-coral/10" : "border-leaf/30 bg-leaf/10"}`}>{children}</span>;
 }
@@ -1192,14 +1295,13 @@ function calculateMetrics(data: AppData) {
   const peopleDone = data.people.filter((item) => item.firstOneOnOne).length;
   const handoverDone = data.handoverChecklist.filter((item) => item.status === "Concluido").length;
   const stakeholdersDone = data.stakeholders.filter((item) => item.conversationDate || item.firstConversation).length;
-  const prioritySuppliers = data.suppliers.slice(0, 20);
-  const selectedSuppliers = data.suppliers.filter((item, index) => index < 20 || item.conversationDate || item.firstInteraction || item.contact || item.notes);
-  const suppliersDone = selectedSuppliers.filter((item) => item.conversationDate || item.firstInteraction).length;
+  const scopedSuppliers = data.suppliers.filter(isSupplierScoped);
+  const supplierGoal = Math.max(1, scopedSuppliers.length || Math.min(20, data.suppliers.length));
+  const suppliersDone = (scopedSuppliers.length ? scopedSuppliers : data.suppliers.slice(0, supplierGoal)).filter(isSupplierDone).length;
   const pillarsDone = data.methodologyPillars.filter((item) => item.status === "Concluido" || (item.decision && item.evidence)).length;
   const peopleProgress = data.people.length ? peopleDone / data.people.length : 0;
   const handoverProgress = data.handoverChecklist.length ? handoverDone / data.handoverChecklist.length : 0;
   const stakeholderProgress = data.stakeholders.length ? stakeholdersDone / data.stakeholders.length : 0;
-  const supplierGoal = Math.max(1, selectedSuppliers.length || prioritySuppliers.length);
   const supplierProgress = suppliersDone / supplierGoal;
   const pillarProgress = data.methodologyPillars.length ? pillarsDone / data.methodologyPillars.length : 0;
   const assignedCategories = new Set(data.people.flatMap((person) => person.categoryIds || []));
@@ -1223,6 +1325,23 @@ function calculateMetrics(data: AppData) {
     unassignedCategories: unassignedCategoryNames.length,
     unassignedCategoryNames
   };
+}
+
+function isSupplierScoped(item: Supplier) {
+  return Boolean(
+    item.contact
+      || item.phone
+      || item.email
+      || item.notes
+      || item.nextSteps
+      || item.opportunities
+      || item.risks
+      || (item.interactionStatus && item.interactionStatus !== "Nao iniciado")
+  );
+}
+
+function isSupplierDone(item: Supplier) {
+  return Boolean(item.conversationDate || item.firstInteraction);
 }
 
 function labelsFor(categories: Category[], ids: string[]) {
