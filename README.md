@@ -31,7 +31,7 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Controle de categorias nao atribuidas e matriz pessoa x categorias
 - Handover agrupavel por cluster
 - Cenarios de estrutura com pessoas, reportes, clusters, categorias e organograma gerado
-- Acesso restrito ao editor `diaswagnerjr@gmail.com` e ao visualizador `visualizador@suzano.com.br`
+- Acesso restrito ao editor `diaswagnerjr@gmail.com` e ao visualizador `wagnerdj@suzano.com.br`
 - Banco Supabase com RLS por usuario
 - Seed automatico por usuario novo
 
@@ -71,7 +71,7 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 5. Execute o SQL incremental em `supabase/migrations/20260607153000_final_operational_adjustments.sql`.
 6. Execute o SQL incremental em `supabase/migrations/20260607165000_owner_viewer_access.sql`.
 7. Confira se Auth esta habilitado com e-mail/senha.
-8. Crie ou confirme o usuario visualizador `visualizador@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
+8. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 

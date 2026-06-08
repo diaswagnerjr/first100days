@@ -64,7 +64,7 @@ type CollectionKey =
 
 const firstDay = new Date(import.meta.env.VITE_FIRST_DAY || "2026-06-05");
 const OWNER_EMAIL = "diaswagnerjr@gmail.com";
-const VIEWER_EMAIL = "visualizador@suzano.com.br";
+const VIEWER_EMAIL = "wagnerdj@suzano.com.br";
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -205,7 +205,7 @@ function App() {
     setLoading(true);
     setError("");
     try {
-      const withUser = <T extends { eq: (column: string, value: string) => T }>(query: T) => isViewer ? query : query.eq("user_id", userId);
+      const withUser = (query: any) => isViewer ? query : query.eq("user_id", userId);
       const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, scenarios, scenarioItems, preferences] = await Promise.all([
         withUser(supabase.from(tableNames.people).select("*")).order("name"),
         withUser(supabase.from(tableNames.stakeholders).select("*")).order("name"),
@@ -226,25 +226,25 @@ function App() {
       }
       if (!isViewer && needsSeedReconcile(people.data, stakeholders.data, suppliers.data, categories.data)) {
         await reconcileSeedData(userId, {
-          people: people.data?.map((row) => normalizePerson(fromSnake<Person>(row))) ?? [],
-          stakeholders: stakeholders.data?.map((row) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? [],
-          suppliers: suppliers.data?.map((row) => normalizeSupplier(fromSnake<Supplier>(row))) ?? [],
-          categories: categories.data?.map((row) => fromSnake<Category>(row)) ?? []
+          people: people.data?.map((row: Record<string, unknown>) => normalizePerson(fromSnake<Person>(row))) ?? [],
+          stakeholders: stakeholders.data?.map((row: Record<string, unknown>) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? [],
+          suppliers: suppliers.data?.map((row: Record<string, unknown>) => normalizeSupplier(fromSnake<Supplier>(row))) ?? [],
+          categories: categories.data?.map((row: Record<string, unknown>) => fromSnake<Category>(row)) ?? []
         });
         return loadCloudData(userId);
       }
       const pref = normalizePreferences(preferences.data ? fromSnake<UserPreference>(preferences.data) : initialData.userPreferences);
       const nextPref = isViewer ? pref : await recordAccess(userId, pref);
       setData({
-        people: people.data.map((row) => normalizePerson(fromSnake<Person>(row))),
-        stakeholders: stakeholders.data?.map((row) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? initialData.stakeholders,
-        suppliers: suppliers.data?.length ? suppliers.data.map((row) => normalizeSupplier(fromSnake<Supplier>(row))) : suppliersInitial,
-        categories: categories.data?.length ? categories.data.map((row) => fromSnake<Category>(row)) : categoriesInitial,
+        people: people.data.map((row: Record<string, unknown>) => normalizePerson(fromSnake<Person>(row))),
+        stakeholders: stakeholders.data?.map((row: Record<string, unknown>) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? initialData.stakeholders,
+        suppliers: suppliers.data?.length ? suppliers.data.map((row: Record<string, unknown>) => normalizeSupplier(fromSnake<Supplier>(row))) : suppliersInitial,
+        categories: categories.data?.length ? categories.data.map((row: Record<string, unknown>) => fromSnake<Category>(row)) : categoriesInitial,
         diagnosis: diagnosis.data ? fromSnake<Diagnosis>(diagnosis.data) : initialData.diagnosis,
-        methodologyPillars: pillars.data?.map((row) => normalizePillar(fromSnake<MethodologyPillar>(row))) ?? initialData.methodologyPillars,
-        handoverChecklist: handover.data?.map((row) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
-        orgScenarios: scenarios.data?.map((row) => fromSnake<OrgScenario>(row)) ?? initialData.orgScenarios,
-        orgScenarioItems: scenarioItems.data?.map((row) => normalizeScenarioItem(fromSnake<OrgScenarioItem>(row))) ?? initialData.orgScenarioItems,
+        methodologyPillars: pillars.data?.map((row: Record<string, unknown>) => normalizePillar(fromSnake<MethodologyPillar>(row))) ?? initialData.methodologyPillars,
+        handoverChecklist: handover.data?.map((row: Record<string, unknown>) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
+        orgScenarios: scenarios.data?.map((row: Record<string, unknown>) => fromSnake<OrgScenario>(row)) ?? initialData.orgScenarios,
+        orgScenarioItems: scenarioItems.data?.map((row: Record<string, unknown>) => normalizeScenarioItem(fromSnake<OrgScenarioItem>(row))) ?? initialData.orgScenarioItems,
         userPreferences: nextPref
       });
     } catch (cloudError) {
@@ -1152,6 +1152,7 @@ function SaveBar({ updatedAt, onSave }: { updatedAt?: string; onSave: () => void
 }
 
 function EditActions({
+  canEdit = true,
   editing,
   saved,
   updatedAt,

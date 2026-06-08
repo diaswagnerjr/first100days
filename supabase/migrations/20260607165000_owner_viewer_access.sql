@@ -32,7 +32,7 @@ as $$
   select
     (app_private.current_email() = 'diaswagnerjr@gmail.com' and target_user = auth.uid())
     or
-    (app_private.current_email() = 'visualizador@suzano.com.br' and target_user = app_private.owner_user_id());
+    (app_private.current_email() = 'wagnerdj@suzano.com.br' and target_user = app_private.owner_user_id());
 $$;
 
 create or replace function app_private.can_write_first100days(target_user uuid)
@@ -94,7 +94,7 @@ create policy profiles_owner_viewer_select
   using (
     (app_private.current_email() = 'diaswagnerjr@gmail.com' and id = auth.uid())
     or
-    (app_private.current_email() = 'visualizador@suzano.com.br' and id = app_private.owner_user_id())
+    (app_private.current_email() = 'wagnerdj@suzano.com.br' and id = app_private.owner_user_id())
   );
 
 create policy profiles_owner_update
@@ -117,7 +117,7 @@ security definer
 set search_path = auth, public
 as $$
 begin
-  if lower(new.email) not in ('diaswagnerjr@gmail.com', 'visualizador@suzano.com.br') then
+  if lower(new.email) not in ('diaswagnerjr@gmail.com', 'wagnerdj@suzano.com.br') then
     raise exception 'First100Days access is restricted to authorized users.';
   end if;
   return new;
