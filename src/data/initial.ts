@@ -1,6 +1,8 @@
 import type {
   AppData,
   Category,
+  ClientRoutine,
+  CoachingSession,
   HandoverItem,
   MethodologyPillar,
   OrgScenario,
@@ -168,7 +170,9 @@ export const handoverChecklistSeed: HandoverItem[] = [
   ["Temas pendentes de SAP/S4", "Tecnologia e SAP"],
   ["Quick wins ja mapeados", "Sourcing e valor"],
   ["Pontos politicos sensiveis", "Stakeholders"],
-  ["Recomendacoes da Thais", "Transicao"]
+  ["Recomendacoes da Thais", "Transicao"],
+  ["Acessos e cartoes corporativos", "Acessos e onboarding"],
+  ["Programa de estagio e sua conducao", "Pessoas"]
 ].map(([item, cluster], index) => ({
   id: id("handover", index),
   item,
@@ -181,6 +185,36 @@ export const handoverChecklistSeed: HandoverItem[] = [
   attachments: [],
   updatedAt: ""
 }));
+
+export const coachingSessionsSeed: CoachingSession[] = Array.from({ length: 6 }, (_, index) => ({
+  id: id("coaching", index),
+  sessionNumber: index + 1,
+  sessionDate: "",
+  topics: "",
+  insights: "",
+  agreedActions: "",
+  actionStatus: "Aberta",
+  prepThemes: "",
+  prepDoubts: "",
+  prepChallenges: "",
+  prepSituations: "",
+  updatedAt: ""
+}));
+
+export const emptyClientRoutine: ClientRoutine = {
+  id: "routine-template",
+  area: "Tecnologia",
+  name: "Nova rotina",
+  objective: "",
+  frequency: "",
+  currentOwner: "",
+  participants: "",
+  status: "Ativa",
+  perceptions: "",
+  improvements: "",
+  futureAdjustments: "",
+  updatedAt: ""
+};
 
 export const orgScenariosSeed: OrgScenario[] = [
   {
@@ -213,6 +247,8 @@ export const initialData: AppData = {
   categories: categoriesInitial,
   methodologyPillars: methodologyPillarsSeed,
   handoverChecklist: handoverChecklistSeed,
+  coachingSessions: coachingSessionsSeed,
+  clientRoutines: [],
   orgScenarios: orgScenariosSeed,
   orgScenarioItems: orgScenarioItemsSeed,
   userPreferences: {

@@ -120,6 +120,36 @@ export type HandoverItem = {
   updatedAt: string;
 };
 
+export type CoachingSession = {
+  id: string;
+  sessionNumber: number;
+  sessionDate: string;
+  topics: string;
+  insights: string;
+  agreedActions: string;
+  actionStatus: "Aberta" | "Em andamento" | "Concluida";
+  prepThemes: string;
+  prepDoubts: string;
+  prepChallenges: string;
+  prepSituations: string;
+  updatedAt: string;
+};
+
+export type ClientRoutine = {
+  id: string;
+  area: "Tecnologia" | "Facilities / SSQV" | "Marketing" | "Rotinas Internas" | "Outras";
+  name: string;
+  objective: string;
+  frequency: string;
+  currentOwner: string;
+  participants: string;
+  status: "Ativa" | "Revisar" | "Descontinuar";
+  perceptions: string;
+  improvements: string;
+  futureAdjustments: string;
+  updatedAt: string;
+};
+
 export type OrgScenario = {
   id: string;
   name: string;
@@ -168,6 +198,8 @@ export type AppData = {
   diagnosis: Diagnosis;
   methodologyPillars: MethodologyPillar[];
   handoverChecklist: HandoverItem[];
+  coachingSessions: CoachingSession[];
+  clientRoutines: ClientRoutine[];
   orgScenarios: OrgScenario[];
   orgScenarioItems: OrgScenarioItem[];
   userPreferences: UserPreference;

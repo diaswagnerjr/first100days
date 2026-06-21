@@ -20,6 +20,9 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Categorias como base de spend e referencia para Pessoas/Estrutura
 - Pilares metodologicos dos 100 dias
 - Handover Thais
+- Countdown recalculado com inicio em `22/06/2026` e checkpoints de 30, 60 e 100 dias
+- Coaching com pacote de 6 sessoes, historico e preparacao da proxima conversa
+- Rotinas com Areas Clientes por Tecnologia, Facilities / SSQV, Marketing, Rotinas Internas e Outras
 - Simulacao de estrutura organizacional
 - Tema claro/escuro
 - Exportacao `.ics` para Outlook/iPhone
