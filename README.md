@@ -22,8 +22,9 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Handover Thais
 - Countdown recalculado com inicio em `22/06/2026` e checkpoints de 30, 60 e 100 dias
 - Coaching com pacote de 6 sessoes, historico e preparacao da proxima conversa
-- Rotinas com Areas Clientes por Tecnologia, Facilities / SSQV, Marketing, Rotinas Internas e Outras
-- Simulacao de estrutura organizacional
+- Rotinas da Area por Tecnologia, Facilities / SSQV, Marketing, Rotinas Internas e Outras, com dashboard executivo clicavel
+- Guardioes de processos, rituais e temas estruturais da area
+- Guia de Entregas com marcos de 30, 60, 90 e 120 dias e indicadores de sucesso da gestao
 - Tema claro/escuro
 - Exportacao `.ics` para Outlook/iPhone
 - Atalho de WhatsApp para fornecedores
@@ -33,7 +34,8 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Sliders 1-5 de hard skills e soft skills em Pessoas
 - Controle de categorias nao atribuidas e matriz pessoa x categorias
 - Handover agrupavel por cluster
-- Cenarios de estrutura com pessoas, reportes, clusters, categorias e organograma gerado
+- Checklist administrativo no Handover Thais, com inclusao e exclusao de itens
+- Cards de Keyze e Juliana destacados como liderancas-chave, com perguntas estrategicas, checklist de validacao e avaliacao de match futuro
 - Acesso restrito ao editor `diaswagnerjr@gmail.com` e ao visualizador `wagnerdj@suzano.com.br`
 - Banco Supabase com RLS por usuario
 - Seed automatico por usuario novo
@@ -60,7 +62,7 @@ Preencha `.env`:
 ```bash
 VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 VITE_SUPABASE_ANON_KEY=SUA_CHAVE_PUBLICA
-VITE_FIRST_DAY=2026-06-05
+VITE_FIRST_DAY=2026-06-22
 ```
 
 Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo local para navegacao e validacao visual.
@@ -73,8 +75,10 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 4. Execute o SQL incremental em `supabase/migrations/20260607120000_functional_adjustments.sql`.
 5. Execute o SQL incremental em `supabase/migrations/20260607153000_final_operational_adjustments.sql`.
 6. Execute o SQL incremental em `supabase/migrations/20260607165000_owner_viewer_access.sql`.
-7. Confira se Auth esta habilitado com e-mail/senha.
-8. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
+7. Execute o SQL incremental em `supabase/migrations/20260621190000_coaching_client_routines_and_timeline.sql`.
+8. Execute o SQL incremental em `supabase/migrations/20260623120000_guardians_delivery_handover_people.sql`.
+9. Confira se Auth esta habilitado com e-mail/senha.
+10. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -83,6 +87,8 @@ Tabelas principais:
 - `people`, `stakeholders`, `suppliers`, `categories`, `diagnosis`
 - `methodology_pillars`, `pillar_decisions`
 - `handover_checklist`
+- `coaching_sessions`, `client_routines`, `guardians`
+- `delivery_guide_items`, `success_indicators`
 - `org_scenarios`, `org_scenario_items`
 - `meetings`, `reminders`
 - `profiles`, `user_preferences`
@@ -98,6 +104,8 @@ Notas funcionais:
 - Se fornecedores ou categorias estiverem vazios para um usuario existente, o app repopula essas tabelas a partir das planilhas no proximo carregamento.
 - A migration final adiciona `hard_skills_score`, `soft_skills_score` e `handover_checklist.cluster`, alem de trigger para classificar novos itens de handover.
 - A migration de acesso troca as policies para permitir escrita somente ao usuario principal e leitura ao visualizador autorizado.
+- A migration `20260623120000_guardians_delivery_handover_people.sql` adiciona somente estruturas incrementais: novos campos em Pessoas, secao do handover, Guardioes, Guia de Entregas e Indicadores de Sucesso. Ela nao apaga, sobrescreve ou reinicializa dados cadastrados.
+- A guia `Estrutura` foi removida da navegacao, mas as tabelas antigas `org_scenarios` e `org_scenario_items` foram preservadas para compatibilidade e historico.
 
 ## GitHub Pages
 
