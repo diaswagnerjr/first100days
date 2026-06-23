@@ -3,12 +3,15 @@ import type {
   Category,
   ClientRoutine,
   CoachingSession,
+  DeliveryGuideItem,
+  Guardian,
   HandoverItem,
   MethodologyPillar,
   OrgScenario,
   OrgScenarioItem,
   Person,
   Stakeholder,
+  SuccessIndicator,
   Supplier
 } from "../lib/types";
 import { categoriesSeed, suppliersSeed } from "./seedSpend";
@@ -63,7 +66,12 @@ export const peopleSeed: Person[] = [
   risks: "",
   succession: "",
   development: "",
-  notes: ""
+  notes: "",
+  strategicAnswers: "",
+  leadershipChecklist: [],
+  futureLeadershipMatch: "",
+  futureLeadershipGap: "",
+  futureLeadershipDecision: ""
 }));
 
 export const stakeholdersSeed: Stakeholder[] = [
@@ -183,6 +191,37 @@ export const handoverChecklistSeed: HandoverItem[] = [
   dueDate: "",
   links: "",
   attachments: [],
+  section: "handover",
+  updatedAt: ""
+}));
+
+export const administrativeHandoverSeed: HandoverItem[] = [
+  "Cartao Corporativo",
+  "Acessos SAP",
+  "Acessos S4",
+  "Celular Corporativo",
+  "Notebook",
+  "OneDrive",
+  "Pastas Compartilhadas",
+  "Teams",
+  "Power BI",
+  "Coupa",
+  "Alcadas",
+  "Assinaturas Eletronicas",
+  "Listas de Distribuicao",
+  "Agenda de Stakeholders",
+  "Outros"
+].map((item, index) => ({
+  id: id("admin-handover", index),
+  item,
+  status: "Nao iniciado",
+  comment: "",
+  cluster: "Handover administrativo",
+  owner: "Wagner / Thais",
+  dueDate: "",
+  links: "",
+  attachments: [],
+  section: "administrativo",
   updatedAt: ""
 }));
 
@@ -216,6 +255,99 @@ export const emptyClientRoutine: ClientRoutine = {
   updatedAt: ""
 };
 
+export const guardiansSeed: Guardian[] = [
+  {
+    id: "guardian-001",
+    processName: "Guardiao do Orcamento Financeiro",
+    processDescription: "Acompanhar disciplina orcamentaria, compromissos financeiros e conexao com Financas.",
+    guardianPerson: "",
+    routineId: "",
+    followUpFrequency: "Mensal",
+    notes: "",
+    updatedAt: ""
+  },
+  {
+    id: "guardian-002",
+    processName: "Guardiao do Matricial da Area",
+    processDescription: "Garantir governanca do matricial, responsabilidades e ritos de acompanhamento.",
+    guardianPerson: "",
+    routineId: "",
+    followUpFrequency: "Mensal",
+    notes: "",
+    updatedAt: ""
+  },
+  {
+    id: "guardian-003",
+    processName: "Guardiao de Conformidade Juridica",
+    processDescription: "Zelar por contratos, pareceres, riscos juridicos e aderencia aos fluxos de conformidade.",
+    guardianPerson: "",
+    routineId: "",
+    followUpFrequency: "Mensal",
+    notes: "",
+    updatedAt: ""
+  }
+];
+
+export const emptyGuardian: Guardian = {
+  id: "guardian-template",
+  processName: "Novo processo",
+  processDescription: "",
+  guardianPerson: "",
+  routineId: "",
+  followUpFrequency: "Mensal",
+  notes: "",
+  updatedAt: ""
+};
+
+export const deliveryGuideSeed: DeliveryGuideItem[] = [];
+
+export const emptyDeliveryGuideItem: DeliveryGuideItem = {
+  id: "delivery-template",
+  name: "Nova entrega",
+  description: "",
+  milestone: "30 dias",
+  category: "",
+  priority: "Media",
+  plannedDate: "",
+  completedDate: "",
+  status: "Nao iniciado",
+  expectedResult: "",
+  achievedResult: "",
+  comments: "",
+  updatedAt: ""
+};
+
+export const successIndicatorsSeed: SuccessIndicator[] = [
+  "Definir estrutura organizacional",
+  "Fechar posicoes criticas",
+  "Engajamento do time",
+  "Captura financeira",
+  "Roadmap da area aprovado",
+  "Governanca implantada"
+].map((indicator, index) => ({
+  id: id("success-indicator", index),
+  indicator,
+  expectedResult: "",
+  currentResult: "",
+  status: "Nao iniciado",
+  targetDate: "",
+  owner: "Wagner",
+  notes: "",
+  updatedAt: ""
+}));
+
+export const emptySuccessIndicator: SuccessIndicator = {
+  id: "success-template",
+  indicator: "Novo indicador",
+  expectedResult: "",
+  currentResult: "",
+  status: "Nao iniciado",
+  targetDate: "",
+  owner: "",
+  notes: "",
+  updatedAt: ""
+};
+
 export const orgScenariosSeed: OrgScenario[] = [
   {
     id: "scenario-001",
@@ -246,9 +378,12 @@ export const initialData: AppData = {
   suppliers: suppliersInitial,
   categories: categoriesInitial,
   methodologyPillars: methodologyPillarsSeed,
-  handoverChecklist: handoverChecklistSeed,
+  handoverChecklist: [...handoverChecklistSeed, ...administrativeHandoverSeed],
   coachingSessions: coachingSessionsSeed,
   clientRoutines: [],
+  guardians: guardiansSeed,
+  deliveryGuideItems: deliveryGuideSeed,
+  successIndicators: successIndicatorsSeed,
   orgScenarios: orgScenariosSeed,
   orgScenarioItems: orgScenarioItemsSeed,
   userPreferences: {
