@@ -582,7 +582,7 @@ function App() {
             <HandoverPanel
               canEdit={canEdit}
               rows={data.handoverChecklist}
-              addItem={(section) => addRow("handoverChecklist", { item: section === "administrativo" ? "Novo item administrativo" : "Novo topico de handover", status: "Nao iniciado", owner: "Wagner / Thais", cluster: section === "administrativo" ? "Handover administrativo" : "Governanca e rotinas", section })}
+              addItem={(section, itemName) => addRow("handoverChecklist", { item: itemName || (section === "administrativo" ? "Novo item administrativo" : "Novo topico de handover"), status: "Nao iniciado", owner: "Wagner / Thais", cluster: section === "administrativo" ? "Handover administrativo" : "Governanca e rotinas", section })}
               deleteItem={(id) => deleteRow("handoverChecklist", id)}
               onChange={(row) => upsertRow("handoverChecklist", row)}
             />
@@ -1182,7 +1182,7 @@ function ClientRoutinesPanel({
   );
 }
 
-function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows: HandoverItem[]; addItem: (section: HandoverItem["section"]) => Promise<string>; deleteItem: (id: string) => void; onChange: (row: HandoverItem) => void; canEdit: boolean }) {
+function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows: HandoverItem[]; addItem: (section: HandoverItem["section"], itemName?: string) => Promise<string>; deleteItem: (id: string) => void; onChange: (row: HandoverItem) => void; canEdit: boolean }) {
   const handoverRows = rows.filter((item) => (item.section || "handover") === "handover");
   const adminRows = rows.filter((item) => item.section === "administrativo");
   const [section, setSection] = useState<HandoverItem["section"]>("handover");
@@ -1221,6 +1221,23 @@ function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows:
     setEditing(false);
     setSaved(true);
   };
+  const toggleAdminItem = (item: HandoverItem) => {
+    if (!canEdit) return;
+    onChange({
+      ...item,
+      status: item.status === "Concluido" ? "Nao iniciado" : "Concluido",
+      section: "administrativo"
+    });
+  };
+  const createAdminChecklistItem = async () => {
+    const itemName = window.prompt("Nome do item do checklist administrativo:");
+    if (!itemName?.trim()) return;
+    const id = await addItem("administrativo", itemName.trim());
+    if (id) {
+      setSection("administrativo");
+      setSelected(id);
+    }
+  };
   const clear = () => {
     if (!window.confirm("Tem certeza que deseja limpar tudo deste ponto de handover? Tema e cluster serao preservados.")) return;
     setDraft({ ...current, status: "Nao iniciado", comment: "", owner: "Wagner / Thais", dueDate: "", links: "", attachments: [] });
@@ -1232,7 +1249,7 @@ function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows:
       action={
         <div className="flex flex-wrap gap-2">
           {canEdit && <button className="btn" onClick={() => createItem("handover")}><Plus size={16} /> Novo topico</button>}
-          {canEdit && <button className="btn" onClick={() => createItem("administrativo")}><Plus size={16} /> Item administrativo</button>}
+          {canEdit && section === "administrativo" && <button className="btn" onClick={createAdminChecklistItem}><Plus size={16} /> Item do checklist</button>}
           <button className="btn" onClick={() => setSortByCluster((value) => !value)}><ListFilter size={16} /> {sortByCluster ? "Ordem original" : "Ordenar por cluster"}</button>
         </div>
       }
@@ -1246,6 +1263,38 @@ function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows:
         <button onClick={() => setSection("handover")} className={`rounded-md border px-3 py-2 text-sm ${section === "handover" ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>Handovers ({handoverRows.length})</button>
         <button onClick={() => setSection("administrativo")} className={`rounded-md border px-3 py-2 text-sm ${section === "administrativo" ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>Checklist administrativo ({adminRows.length})</button>
       </div>
+      {section === "administrativo" ? (
+        <div className="rounded-md border border-line bg-surface p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold">Checklist administrativo</h3>
+            <Badge>{adminRows.filter((item) => item.status === "Concluido").length}/{adminRows.length} concluidos</Badge>
+          </div>
+          <div className="grid gap-2">
+            {sortedRows.map((item) => {
+              const checked = item.status === "Concluido";
+              return (
+                <div key={item.id} className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${checked ? "border-leaf/40 bg-leaf/10" : "border-line bg-card"}`}>
+                  <label className="flex min-w-0 flex-1 items-center gap-3 text-sm">
+                    <input
+                      className="h-4 w-4 accent-leaf"
+                      disabled={!canEdit}
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAdminItem(item)}
+                    />
+                    <span className={checked ? "font-semibold text-leaf" : "font-medium"}>{item.item}</span>
+                  </label>
+                  {canEdit && (
+                    <button className="btn" onClick={() => { if (window.confirm("Excluir este item do checklist?")) deleteItem(item.id); }}>
+                      <Trash2 size={16} /> Excluir
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
       <CardLayout rows={sortedRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.item} subtitle={item.status} meta={item.cluster || handoverCluster(item.item)} />}>
         <div className="grid gap-3 lg:grid-cols-2">
           <Field disabled={!editing} label={current.section === "administrativo" ? "Item administrativo" : "Tema"} value={current.item} onChange={(value) => setDraft({ ...current, item: value })} />
@@ -1260,6 +1309,7 @@ function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows:
         <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
         {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este item do handover permanentemente?")) deleteItem(row.id); }}><Trash2 size={16} /> Excluir item</button></ActionBar>}
       </CardLayout>
+      )}
     </Panel>
   );
 }
