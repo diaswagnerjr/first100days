@@ -6,7 +6,6 @@ import {
   CalendarRange,
   Copy,
   Edit3,
-  GitBranch,
   Handshake,
   LayoutDashboard,
   ListFilter,
@@ -29,7 +28,11 @@ import type { Session } from "@supabase/supabase-js";
 import {
   categoriesInitial,
   coachingSessionsSeed,
+  emptyDeliveryGuideItem,
   emptyClientRoutine,
+  emptyGuardian,
+  emptySuccessIndicator,
+  guardiansSeed,
   handoverChecklistSeed,
   initialData,
   methodologyPillarsSeed,
@@ -47,18 +50,22 @@ import type {
   Category,
   ClientRoutine,
   CoachingSession,
+  DeliveryGuideItem,
   Diagnosis,
+  Guardian,
   HandoverItem,
   MethodologyPillar,
   OrgScenario,
   OrgScenarioItem,
   Person,
+  Priority,
   Stakeholder,
+  SuccessIndicator,
   Supplier,
   UserPreference
 } from "./lib/types";
 
-type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "org" | "stakeholders" | "suppliers" | "diagnosis";
+type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "guardians" | "deliveryGuide" | "stakeholders" | "suppliers" | "diagnosis";
 type CollectionKey =
   | "people"
   | "stakeholders"
@@ -68,6 +75,9 @@ type CollectionKey =
   | "handoverChecklist"
   | "coachingSessions"
   | "clientRoutines"
+  | "guardians"
+  | "deliveryGuideItems"
+  | "successIndicators"
   | "orgScenarios"
   | "orgScenarioItems";
 
@@ -86,8 +96,9 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> 
   { key: "people", label: "Pessoas", icon: Users },
   { key: "coaching", label: "Coaching", icon: NotebookPen },
   { key: "handover", label: "Handover Thais", icon: Handshake },
-  { key: "clientRoutines", label: "Rotinas areas clientes", icon: Waypoints },
-  { key: "org", label: "Estrutura", icon: GitBranch },
+  { key: "clientRoutines", label: "Rotinas da Area", icon: Waypoints },
+  { key: "guardians", label: "Guardioes", icon: ShieldAlert },
+  { key: "deliveryGuide", label: "Guia de Entregas", icon: Target },
   { key: "stakeholders", label: "Stakeholders", icon: UserSquare2 },
   { key: "suppliers", label: "Fornecedores", icon: BriefcaseBusiness },
   { key: "diagnosis", label: "Diagnostico", icon: ShieldAlert }
@@ -102,6 +113,9 @@ const tableNames: Record<CollectionKey | "diagnosis" | "userPreferences", string
   handoverChecklist: "handover_checklist",
   coachingSessions: "coaching_sessions",
   clientRoutines: "client_routines",
+  guardians: "guardians",
+  deliveryGuideItems: "delivery_guide_items",
+  successIndicators: "success_indicators",
   orgScenarios: "org_scenarios",
   orgScenarioItems: "org_scenario_items",
   diagnosis: "diagnosis",
@@ -119,9 +133,13 @@ const dateFields = new Set([
   "decision_date",
   "due_date",
   "session_date",
+  "planned_date",
+  "completed_date",
+  "target_date",
   "last_accessed_at",
   "previous_accessed_at"
 ]);
+const nullableFields = new Set(["routine_id"]);
 
 const emptyRows = {
   people: peopleSeed[0],
@@ -132,6 +150,9 @@ const emptyRows = {
   handoverChecklist: handoverChecklistSeed[0],
   coachingSessions: coachingSessionsSeed[0],
   clientRoutines: emptyClientRoutine,
+  guardians: emptyGuardian,
+  deliveryGuideItems: emptyDeliveryGuideItem,
+  successIndicators: emptySuccessIndicator,
   orgScenarios: orgScenariosSeed[0],
   orgScenarioItems: orgScenarioItemsSeed[0]
 };
@@ -141,7 +162,7 @@ const toSnake = (row: Record<string, unknown>, userId: string) => {
   Object.entries(row).forEach(([key, value]) => {
     const snake = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
     if (snake === "updated_at" && !value) return;
-    mapped[snake] = dateFields.has(snake) && value === "" ? null : value;
+    mapped[snake] = (dateFields.has(snake) || nullableFields.has(snake)) && value === "" ? null : value;
   });
   delete mapped.id;
   return mapped;
@@ -164,18 +185,26 @@ const normalizePerson = (row: Person): Person => ({
   ...peopleSeed[0],
   ...row,
   categoryIds: asArray(row.categoryIds),
+  leadershipChecklist: asArray(row.leadershipChecklist),
   potentialNotes: row.potentialNotes || "",
   hardSkills: row.hardSkills || "",
   softSkills: row.softSkills || "",
   hardSkillsScore: Number(row.hardSkillsScore || 3),
-  softSkillsScore: Number(row.softSkillsScore || 3)
+  softSkillsScore: Number(row.softSkillsScore || 3),
+  strategicAnswers: row.strategicAnswers || "",
+  futureLeadershipMatch: row.futureLeadershipMatch || "",
+  futureLeadershipGap: row.futureLeadershipGap || "",
+  futureLeadershipDecision: row.futureLeadershipDecision || ""
 });
 const normalizeStakeholder = (row: Stakeholder): Stakeholder => ({ ...stakeholdersSeed[0], ...row, conversationDate: row.conversationDate || row.firstConversation || "", interactionStatus: row.interactionStatus || "Nao iniciado" });
 const normalizeSupplier = (row: Supplier): Supplier => ({ ...suppliersInitial[0], ...row, conversationDate: row.conversationDate || row.firstInteraction || "", interactionStatus: row.interactionStatus || row.relationshipStatus || "Nao iniciado", nextSteps: row.nextSteps || row.actionPlan || "" });
 const normalizePillar = (row: MethodologyPillar): MethodologyPillar => ({ ...(methodologyPillarsSeed.find((item) => item.name === row.name) ?? methodologyPillarsSeed[0]), ...row });
-const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [] });
+const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [], section: row.section || "handover" });
 const normalizeCoaching = (row: CoachingSession): CoachingSession => ({ ...coachingSessionsSeed[0], ...row, sessionNumber: Number(row.sessionNumber || 1), actionStatus: row.actionStatus || "Aberta" });
 const normalizeClientRoutine = (row: ClientRoutine): ClientRoutine => ({ ...emptyClientRoutine, ...row, status: row.status || "Ativa", area: row.area || "Outras" });
+const normalizeGuardian = (row: Guardian): Guardian => ({ ...emptyGuardian, ...row, followUpFrequency: row.followUpFrequency || "Mensal" });
+const normalizeDelivery = (row: DeliveryGuideItem): DeliveryGuideItem => ({ ...emptyDeliveryGuideItem, ...row, milestone: row.milestone || "30 dias", status: row.status || "Nao iniciado", priority: row.priority || "Media" });
+const normalizeIndicator = (row: SuccessIndicator): SuccessIndicator => ({ ...emptySuccessIndicator, ...row, status: row.status || "Nao iniciado" });
 const normalizeScenarioItem = (row: OrgScenarioItem): OrgScenarioItem => ({ ...orgScenarioItemsSeed[0], ...row, categoryIds: asArray(row.categoryIds), spendResponsibility: Number(row.spendResponsibility || 0) });
 const normalizePreferences = (row: UserPreference): UserPreference => ({ ...initialData.userPreferences, ...row, accessCount: Number(row.accessCount || 0), mutationCount: Number(row.mutationCount || 0) });
 
@@ -252,7 +281,7 @@ function App() {
     setError("");
     try {
       const withUser = (query: any) => isViewer ? query : query.eq("user_id", userId);
-      const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, coaching, routines, scenarios, scenarioItems, preferences] = await Promise.all([
+      const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, coaching, routines, guardians, deliveries, indicators, scenarios, scenarioItems, preferences] = await Promise.all([
         withUser(supabase.from(tableNames.people).select("*")).order("name"),
         withUser(supabase.from(tableNames.stakeholders).select("*")).order("name"),
         withUser(supabase.from(tableNames.suppliers).select("*")).order("spend", { ascending: false }),
@@ -262,11 +291,14 @@ function App() {
         withUser(supabase.from(tableNames.handoverChecklist).select("*")).order("item"),
         withUser(supabase.from(tableNames.coachingSessions).select("*")).order("session_number"),
         withUser(supabase.from(tableNames.clientRoutines).select("*")).order("area").order("name"),
+        withUser(supabase.from(tableNames.guardians).select("*")).order("process_name"),
+        withUser(supabase.from(tableNames.deliveryGuideItems).select("*")).order("planned_date", { ascending: true }),
+        withUser(supabase.from(tableNames.successIndicators).select("*")).order("indicator"),
         withUser(supabase.from(tableNames.orgScenarios).select("*")).order("name"),
         withUser(supabase.from(tableNames.orgScenarioItems).select("*")).order("person_name"),
         withUser(supabase.from(tableNames.userPreferences).select("*")).maybeSingle()
       ]);
-      const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
+      const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, guardians.error, deliveries.error, indicators.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
       if (failures.length) throw failures[0];
       if (!people.data?.length || !pillars.data?.length || !handover.data?.length || !scenarios.data?.length) {
         await ensureInitialData(userId);
@@ -295,6 +327,9 @@ function App() {
         handoverChecklist: handover.data?.map((row: Record<string, unknown>) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
         coachingSessions: coaching.data?.map((row: Record<string, unknown>) => normalizeCoaching(fromSnake<CoachingSession>(row))) ?? initialData.coachingSessions,
         clientRoutines: routines.data?.map((row: Record<string, unknown>) => normalizeClientRoutine(fromSnake<ClientRoutine>(row))) ?? [],
+        guardians: guardians.data?.map((row: Record<string, unknown>) => normalizeGuardian(fromSnake<Guardian>(row))) ?? initialData.guardians,
+        deliveryGuideItems: deliveries.data?.map((row: Record<string, unknown>) => normalizeDelivery(fromSnake<DeliveryGuideItem>(row))) ?? [],
+        successIndicators: indicators.data?.map((row: Record<string, unknown>) => normalizeIndicator(fromSnake<SuccessIndicator>(row))) ?? initialData.successIndicators,
         orgScenarios: scenarios.data?.map((row: Record<string, unknown>) => fromSnake<OrgScenario>(row)) ?? initialData.orgScenarios,
         orgScenarioItems: scenarioItems.data?.map((row: Record<string, unknown>) => normalizeScenarioItem(fromSnake<OrgScenarioItem>(row))) ?? initialData.orgScenarioItems,
         userPreferences: nextPref
@@ -338,8 +373,10 @@ function App() {
       insertMany("suppliers", suppliersInitial),
       insertMany("categories", categoriesInitial),
       insertMany("methodologyPillars", methodologyPillarsSeed),
-      insertMany("handoverChecklist", handoverChecklistSeed),
+      insertMany("handoverChecklist", initialData.handoverChecklist),
       insertMany("coachingSessions", coachingSessionsSeed),
+      insertMany("guardians", guardiansSeed),
+      insertMany("successIndicators", initialData.successIndicators),
       insertMany("orgScenarios", orgScenariosSeed),
       insertMany("orgScenarioItems", orgScenarioItemsSeed),
       client.from(tableNames.diagnosis).insert(toSnake(initialData.diagnosis as unknown as Record<string, unknown>, userId)),
@@ -352,7 +389,7 @@ function App() {
       || (stakeholders?.length || 0) < stakeholdersSeed.length
       || (suppliers?.length || 0) < 20
       || (categories?.length || 0) < categoriesInitial.length
-      || (handover?.length || 0) < handoverChecklistSeed.length
+      || (handover?.length || 0) < initialData.handoverChecklist.length
       || (coaching?.length || 0) < coachingSessionsSeed.length;
   }
 
@@ -372,7 +409,7 @@ function App() {
     await insertMissing("suppliers", suppliersInitial, current.suppliers);
     await insertMissing("categories", categoriesInitial, current.categories);
     const existingHandover = new Set(current.handover.map((row) => row.item.toLowerCase()));
-    const missingHandover = handoverChecklistSeed.filter((row) => !existingHandover.has(row.item.toLowerCase()));
+    const missingHandover = initialData.handoverChecklist.filter((row) => !existingHandover.has(row.item.toLowerCase()));
     if (missingHandover.length) await client.from(tableNames.handoverChecklist).insert(missingHandover.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
     const existingSessions = new Set(current.coaching.map((row) => row.sessionNumber));
     const missingSessions = coachingSessionsSeed.filter((row) => !existingSessions.has(row.sessionNumber));
@@ -384,7 +421,7 @@ function App() {
       setError("Usuario visualizador nao pode salvar alteracoes.");
       return;
     }
-    const stamped = ["methodologyPillars", "handoverChecklist", "coachingSessions", "clientRoutines"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
+    const stamped = ["methodologyPillars", "handoverChecklist", "coachingSessions", "clientRoutines", "guardians", "deliveryGuideItems", "successIndicators"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
     setData((current) => {
       const nextRows = (current[collection] as Array<{ id: string }>).map((item) => (item.id === row.id ? stamped : item));
       return { ...current, [collection]: nextRows } as AppData;
@@ -401,7 +438,8 @@ function App() {
       return "";
     }
     const base = emptyRows[collection];
-    const row = { ...base, ...overrides, id: crypto.randomUUID(), name: "name" in base ? String(overrides.name || `Novo ${base.name}`) : overrides.name } as unknown as { id: string };
+    const row = { ...base, ...overrides, id: crypto.randomUUID() } as unknown as { id: string; name?: string };
+    if ("name" in base) row.name = String(overrides.name || `Novo ${(base as { name: string }).name}`);
     if (collection === "orgScenarioItems" && !("scenarioId" in overrides)) (row as OrgScenarioItem).scenarioId = data.orgScenarios[0]?.id || "";
     setData((current) => ({ ...current, [collection]: [row, ...current[collection]] } as AppData));
     if (!supabase || !session?.user.id) return row.id;
@@ -540,7 +578,15 @@ function App() {
           {activeTab === "pillars" && <PillarsPanel canEdit={canEdit} rows={data.methodologyPillars} onChange={(row) => upsertRow("methodologyPillars", row)} />}
           {activeTab === "people" && <PeoplePanel canEdit={canEdit} rows={data.people} categories={data.categories} onChange={(row) => upsertRow("people", row)} />}
           {activeTab === "coaching" && <CoachingPanel canEdit={canEdit} rows={data.coachingSessions} onChange={(row) => upsertRow("coachingSessions", row)} />}
-          {activeTab === "handover" && <HandoverPanel canEdit={canEdit} rows={data.handoverChecklist} onChange={(row) => upsertRow("handoverChecklist", row)} />}
+          {activeTab === "handover" && (
+            <HandoverPanel
+              canEdit={canEdit}
+              rows={data.handoverChecklist}
+              addItem={(section) => addRow("handoverChecklist", { item: section === "administrativo" ? "Novo item administrativo" : "Novo topico de handover", status: "Nao iniciado", owner: "Wagner / Thais", cluster: section === "administrativo" ? "Handover administrativo" : "Governanca e rotinas", section })}
+              deleteItem={(id) => deleteRow("handoverChecklist", id)}
+              onChange={(row) => upsertRow("handoverChecklist", row)}
+            />
+          )}
           {activeTab === "clientRoutines" && (
             <ClientRoutinesPanel
               canEdit={canEdit}
@@ -550,20 +596,28 @@ function App() {
               onChange={(row) => upsertRow("clientRoutines", row)}
             />
           )}
-          {activeTab === "org" && (
-            <OrgPanel
+          {activeTab === "guardians" && (
+            <GuardiansPanel
               canEdit={canEdit}
-              scenarios={data.orgScenarios}
-              items={data.orgScenarioItems}
               people={data.people}
-              categories={data.categories}
-              addScenario={addScenarioWithPeople}
-              duplicateScenario={duplicateScenario}
-              deleteScenario={(id) => deleteRow("orgScenarios", id)}
-              addItem={(scenarioId) => addRow("orgScenarioItems", { scenarioId, personName: "Nova posicao", role: "", cluster: "", manager: "", categoryIds: [], spendResponsibility: 0, notes: "" })}
-              deleteItem={(id) => deleteRow("orgScenarioItems", id)}
-              onScenario={(row) => upsertRow("orgScenarios", row)}
-              onItem={(row) => upsertRow("orgScenarioItems", row)}
+              routines={data.clientRoutines}
+              rows={data.guardians}
+              addGuardian={() => addRow("guardians", { ...emptyGuardian, processName: "Novo processo" })}
+              deleteGuardian={(id) => deleteRow("guardians", id)}
+              onChange={(row) => upsertRow("guardians", row)}
+            />
+          )}
+          {activeTab === "deliveryGuide" && (
+            <DeliveryGuidePanel
+              canEdit={canEdit}
+              rows={data.deliveryGuideItems}
+              indicators={data.successIndicators}
+              addDelivery={() => addRow("deliveryGuideItems", { ...emptyDeliveryGuideItem, name: "Nova entrega" })}
+              deleteDelivery={(id) => deleteRow("deliveryGuideItems", id)}
+              onDelivery={(row) => upsertRow("deliveryGuideItems", row)}
+              addIndicator={() => addRow("successIndicators", { ...emptySuccessIndicator, indicator: "Novo indicador" })}
+              deleteIndicator={(id) => deleteRow("successIndicators", id)}
+              onIndicator={(row) => upsertRow("successIndicators", row)}
             />
           )}
           {activeTab === "stakeholders" && <StakeholderPanel rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado" })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
@@ -640,6 +694,8 @@ function Dashboard({ dayState, data, metrics }: {
         <Metric title="Pessoas" value={`${metrics.peopleDone}/${data.people.length}`} note="pessoas conversadas" />
         <Metric title="Handover Thais" value={`${metrics.handoverDone}/${data.handoverChecklist.length}`} note="pontos concluidos" />
         <Metric title="Sessoes de Coaching" value={`${metrics.coachingDone}/6`} note="sessoes realizadas" />
+        <Metric title="Entregas" value={`${metrics.deliveryDone}/${data.deliveryGuideItems.length}`} note="guia dos marcos" />
+        <Metric title="Guardioes" value={`${metrics.guardiansAssigned}/${data.guardians.length}`} note="processos com responsavel" />
         <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${data.stakeholders.length}`} note="conversados" />
         <Metric title="Fornecedores" value={`${metrics.suppliersDone}/${metrics.supplierGoal}`} note="fichas preenchidas" />
       </section>
@@ -817,7 +873,12 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
       risks: "",
       succession: "",
       development: "",
-      notes: ""
+      notes: "",
+      strategicAnswers: "",
+      leadershipChecklist: [],
+      futureLeadershipMatch: "",
+      futureLeadershipGap: "",
+      futureLeadershipDecision: ""
     });
     setSaved(false);
   };
@@ -841,6 +902,53 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
           <Field disabled={!editing} label="Plano de desenvolvimento" area value={current.development} onChange={(value) => setDraft({ ...current, development: value })} />
           <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
         </div>
+        {isKeyLeader(current.name) && (
+          <div className="mt-5 space-y-4 rounded-md border border-leaf/30 bg-leaf/10 p-4">
+            <div>
+              <h3 className="font-semibold">Perguntas Estrategicas</h3>
+              <p className="mt-1 text-sm text-muted">Visao da area, lideranca, estrutura, motivacao e futuro sem induzir respostas.</p>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-md border border-line bg-card p-3 text-sm">
+                {strategicQuestions.map((group) => (
+                  <div key={group.title} className="mb-3 last:mb-0">
+                    <strong className="block text-leaf">{group.title}</strong>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+                      {group.questions.map((question) => <li key={question}>{question}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              <Field disabled={!editing} label="Respostas e leitura da conversa" area value={current.strategicAnswers} onChange={(value) => setDraft({ ...current, strategicAnswers: value })} />
+            </div>
+            <div>
+              <h3 className="font-semibold">Checklist de Validacao</h3>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {leadershipChecklistItems.map((item) => (
+                  <label key={item} className="flex items-center gap-2 rounded-md border border-line bg-card px-3 py-2 text-sm">
+                    <input
+                      disabled={!editing}
+                      type="checkbox"
+                      checked={current.leadershipChecklist.includes(item)}
+                      onChange={(event) => {
+                        const next = event.target.checked
+                          ? [...current.leadershipChecklist, item]
+                          : current.leadershipChecklist.filter((value) => value !== item);
+                        setDraft({ ...current, leadershipChecklist: next });
+                      }}
+                    />
+                    {item}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              <Field disabled={!editing} label="Match com a lideranca futura" area value={current.futureLeadershipMatch} onChange={(value) => setDraft({ ...current, futureLeadershipMatch: value })} />
+              <Field disabled={!editing} label="O que ainda nao tem match" area value={current.futureLeadershipGap} onChange={(value) => setDraft({ ...current, futureLeadershipGap: value })} />
+              <Field disabled={!editing} label="Avaliacao simples para o futuro da area" area value={current.futureLeadershipDecision} onChange={(value) => setDraft({ ...current, futureLeadershipDecision: value })} />
+            </div>
+          </div>
+        )}
         <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
         <ActionBar>
           <button className="btn" onClick={() => downloadIcs(`1:1 - ${current.name}`, current.firstOneOnOne, current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
@@ -949,6 +1057,7 @@ function CoachingPanel({ rows, onChange, canEdit }: { rows: CoachingSession[]; o
 }
 
 const clientRoutineAreas: ClientRoutine["area"][] = ["Tecnologia", "Facilities / SSQV", "Marketing", "Rotinas Internas", "Outras"];
+const frequencyOptions = ["", "Diaria", "Semanal", "Quinzenal", "Mensal", "Trimestral", "Anual"];
 
 function ClientRoutinesPanel({
   rows,
@@ -995,7 +1104,49 @@ function ClientRoutinesPanel({
     setSaved(false);
   };
   return (
-    <Panel title="Rotinas com Areas Clientes" action={canEdit ? <button className="btn" onClick={createRoutine}><Plus size={16} /> Nova rotina</button> : <Badge tone="warn">Somente leitura</Badge>}>
+    <Panel title="Rotinas da Area" action={canEdit ? <button className="btn" onClick={createRoutine}><Plus size={16} /> Nova rotina</button> : <Badge tone="warn">Somente leitura</Badge>}>
+      <div className="mb-5 rounded-md border border-line bg-surface p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold">Dashboard de rotinas</h3>
+          <Badge>{rows.length} rotinas mapeadas</Badge>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-line text-xs uppercase text-muted">
+              <tr>
+                <th className="py-2 pr-3">Nome da rotina</th>
+                <th className="py-2 pr-3">Frequencia</th>
+                <th className="py-2 pr-3">Objetivo</th>
+                <th className="py-2 pr-3">Responsavel</th>
+                <th className="py-2 pr-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item) => (
+                <tr
+                  key={item.id}
+                  className="cursor-pointer border-b border-line/70 hover:bg-leaf/10"
+                  onClick={() => {
+                    setArea(item.area);
+                    setSelected(item.id);
+                  }}
+                >
+                  <td className="py-2 pr-3 font-semibold">{item.name}</td>
+                  <td className="py-2 pr-3">{item.frequency || "A definir"}</td>
+                  <td className="py-2 pr-3 text-muted">{item.objective || "A preencher"}</td>
+                  <td className="py-2 pr-3">{item.currentOwner || "A definir"}</td>
+                  <td className="py-2 pr-3">{item.status}</td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-muted">Nenhuma rotina cadastrada ainda.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
       <div className="mb-4 flex flex-wrap gap-2">
         {clientRoutineAreas.map((item) => (
           <button key={item} onClick={() => setArea(item)} className={`rounded-md border px-3 py-2 text-sm ${area === item ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>
@@ -1015,7 +1166,7 @@ function ClientRoutinesPanel({
             <Field disabled={!editing} label="Nome da rotina" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
             <Select disabled={!editing} label="Subsecao" value={draft.area} onChange={(value) => setDraft({ ...draft, area: value as ClientRoutine["area"] })} options={clientRoutineAreas} />
             <Field disabled={!editing} label="Objetivo da rotina" area value={draft.objective} onChange={(value) => setDraft({ ...draft, objective: value })} />
-            <Field disabled={!editing} label="Frequencia" value={draft.frequency} onChange={(value) => setDraft({ ...draft, frequency: value })} />
+            <Select disabled={!editing} label="Frequencia" value={draft.frequency} onChange={(value) => setDraft({ ...draft, frequency: value })} options={frequencyOptions} />
             <Field disabled={!editing} label="Responsavel atual" value={draft.currentOwner} onChange={(value) => setDraft({ ...draft, currentOwner: value })} />
             <Field disabled={!editing} label="Participantes" area value={draft.participants} onChange={(value) => setDraft({ ...draft, participants: value })} />
             <Select disabled={!editing} label="Status" value={draft.status} onChange={(value) => setDraft({ ...draft, status: value as ClientRoutine["status"] })} options={["Ativa", "Revisar", "Descontinuar"]} />
@@ -1031,14 +1182,22 @@ function ClientRoutinesPanel({
   );
 }
 
-function HandoverPanel({ rows, onChange, canEdit }: { rows: HandoverItem[]; onChange: (row: HandoverItem) => void; canEdit: boolean }) {
-  const [selected, setSelected] = useState(rows[0]?.id || "");
+function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows: HandoverItem[]; addItem: (section: HandoverItem["section"]) => Promise<string>; deleteItem: (id: string) => void; onChange: (row: HandoverItem) => void; canEdit: boolean }) {
+  const handoverRows = rows.filter((item) => (item.section || "handover") === "handover");
+  const adminRows = rows.filter((item) => item.section === "administrativo");
+  const [section, setSection] = useState<HandoverItem["section"]>("handover");
+  const activeRows = section === "handover" ? handoverRows : adminRows;
+  const [selected, setSelected] = useState(activeRows[0]?.id || rows[0]?.id || "");
   const [sortByCluster, setSortByCluster] = useState(false);
-  const sortedRows = sortByCluster ? [...rows].sort((a, b) => `${a.cluster || handoverCluster(a.item)}-${a.item}`.localeCompare(`${b.cluster || handoverCluster(b.item)}-${b.item}`)) : rows;
+  const sortedRows = sortByCluster ? [...activeRows].sort((a, b) => `${a.cluster || handoverCluster(a.item)}-${a.item}`.localeCompare(`${b.cluster || handoverCluster(b.item)}-${b.item}`)) : activeRows;
   const row = rows.find((item) => item.id === selected) || sortedRows[0];
   const [draft, setDraft] = useState(row);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    const nextRows = section === "handover" ? handoverRows : adminRows;
+    if (!nextRows.some((item) => item.id === selected)) setSelected(nextRows[0]?.id || "");
+  }, [section, rows, selected]);
   useEffect(() => {
     if (row) {
       setDraft(row);
@@ -1048,7 +1207,15 @@ function HandoverPanel({ rows, onChange, canEdit }: { rows: HandoverItem[]; onCh
   }, [row?.id]);
   if (!row) return null;
   const current = draft || row;
-  const clusters = Array.from(new Set(rows.map((item) => item.cluster || handoverCluster(item.item)))).sort();
+  const clusters = Array.from(new Set([...rows.map((item) => item.cluster || handoverCluster(item.item)), "Handover administrativo"])).sort();
+  const createItem = async (nextSection: HandoverItem["section"]) => {
+    const id = await addItem(nextSection);
+    if (id) {
+      setSection(nextSection);
+      setSelected(id);
+      setEditing(true);
+    }
+  };
   const save = () => {
     onChange(current);
     setEditing(false);
@@ -1060,10 +1227,28 @@ function HandoverPanel({ rows, onChange, canEdit }: { rows: HandoverItem[]; onCh
     setSaved(false);
   };
   return (
-    <Panel title="Handover Thais" action={<button className="btn" onClick={() => setSortByCluster((value) => !value)}><ListFilter size={16} /> {sortByCluster ? "Ordem original" : "Ordenar por cluster"}</button>}>
+    <Panel
+      title="Handover Thais"
+      action={
+        <div className="flex flex-wrap gap-2">
+          {canEdit && <button className="btn" onClick={() => createItem("handover")}><Plus size={16} /> Novo topico</button>}
+          {canEdit && <button className="btn" onClick={() => createItem("administrativo")}><Plus size={16} /> Item administrativo</button>}
+          <button className="btn" onClick={() => setSortByCluster((value) => !value)}><ListFilter size={16} /> {sortByCluster ? "Ordem original" : "Ordenar por cluster"}</button>
+        </div>
+      }
+    >
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Metric title="Topicos de handover" value={`${handoverRows.filter((item) => item.status === "Concluido").length}/${handoverRows.length}`} note="progresso dos temas" />
+        <Metric title="Checklist administrativo" value={`${adminRows.filter((item) => item.status === "Concluido").length}/${adminRows.length}`} note="itens concluidos" />
+        <Metric title="Total do handover" value={`${rows.filter((item) => item.status === "Concluido").length}/${rows.length}`} note="dashboard dinamico" />
+      </div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button onClick={() => setSection("handover")} className={`rounded-md border px-3 py-2 text-sm ${section === "handover" ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>Handovers ({handoverRows.length})</button>
+        <button onClick={() => setSection("administrativo")} className={`rounded-md border px-3 py-2 text-sm ${section === "administrativo" ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>Checklist administrativo ({adminRows.length})</button>
+      </div>
       <CardLayout rows={sortedRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.item} subtitle={item.status} meta={item.cluster || handoverCluster(item.item)} />}>
         <div className="grid gap-3 lg:grid-cols-2">
-          <ReadOnly label="Tema" value={current.item} />
+          <Field disabled={!editing} label={current.section === "administrativo" ? "Item administrativo" : "Tema"} value={current.item} onChange={(value) => setDraft({ ...current, item: value })} />
           <Select disabled={!editing} label="Cluster" value={current.cluster || handoverCluster(current.item)} onChange={(value) => setDraft({ ...current, cluster: value })} options={clusters} />
           <Select disabled={!editing} label="Status" value={current.status} onChange={(value) => setDraft({ ...current, status: value as HandoverItem["status"] })} options={["Nao iniciado", "Iniciado", "Em andamento", "Em risco", "Concluido"]} />
           <Field disabled={!editing} label="Responsaveis" value={current.owner} onChange={(value) => setDraft({ ...current, owner: value })} />
@@ -1073,8 +1258,292 @@ function HandoverPanel({ rows, onChange, canEdit }: { rows: HandoverItem[]; onCh
         </div>
         <AttachmentBox disabled={!editing} row={current} onChange={setDraft} />
         <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+        {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este item do handover permanentemente?")) deleteItem(row.id); }}><Trash2 size={16} /> Excluir item</button></ActionBar>}
       </CardLayout>
     </Panel>
+  );
+}
+
+function GuardiansPanel({
+  rows,
+  people,
+  routines,
+  addGuardian,
+  deleteGuardian,
+  onChange,
+  canEdit
+}: {
+  rows: Guardian[];
+  people: Person[];
+  routines: ClientRoutine[];
+  addGuardian: () => Promise<string>;
+  deleteGuardian: (id: string) => void;
+  onChange: (row: Guardian) => void;
+  canEdit: boolean;
+}) {
+  const [selected, setSelected] = useState(rows[0]?.id || "");
+  const row = rows.find((item) => item.id === selected) || rows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
+  const createGuardian = async () => {
+    const id = await addGuardian();
+    if (id) {
+      setSelected(id);
+      setEditing(true);
+    }
+  };
+  if (!row || !draft) return (
+    <Panel title="Guardioes" action={canEdit ? <button className="btn" onClick={createGuardian}><Plus size={16} /> Novo guardiao</button> : <Badge tone="warn">Somente leitura</Badge>}>
+      <p className="text-sm text-muted">Nenhum guardiao cadastrado ainda.</p>
+    </Panel>
+  );
+  const routineLabels = Object.fromEntries(routines.map((routine) => [routine.id, routine.name]));
+  const current = draft;
+  const save = () => {
+    onChange(current);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!window.confirm("Tem certeza que deseja limpar este guardiao? Nome do processo sera preservado.")) return;
+    setDraft({ ...current, processDescription: "", guardianPerson: "", routineId: "", followUpFrequency: "Mensal", notes: "" });
+    setSaved(false);
+  };
+  return (
+    <Panel title="Guardioes" action={canEdit ? <button className="btn" onClick={createGuardian}><Plus size={16} /> Novo guardiao</button> : <Badge tone="warn">Somente leitura</Badge>}>
+      <div className="mb-5 rounded-md border border-line bg-surface p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold">Dashboard de guardioes</h3>
+          <Badge>{rows.length} processos criticos</Badge>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left text-sm">
+            <thead className="border-b border-line text-xs uppercase text-muted">
+              <tr>
+                <th className="py-2 pr-3">Processo</th>
+                <th className="py-2 pr-3">Guardiao</th>
+                <th className="py-2 pr-3">Rotina associada</th>
+                <th className="py-2 pr-3">Frequencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item) => (
+                <tr key={item.id} className="cursor-pointer border-b border-line/70 hover:bg-leaf/10" onClick={() => setSelected(item.id)}>
+                  <td className="py-2 pr-3 font-semibold">{item.processName}</td>
+                  <td className="py-2 pr-3">{item.guardianPerson || "A definir"}</td>
+                  <td className="py-2 pr-3 text-muted">{routineLabels[item.routineId] || "Sem rotina vinculada"}</td>
+                  <td className="py-2 pr-3">{item.followUpFrequency || "A definir"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.processName} subtitle={item.guardianPerson || "Guardiao a definir"} meta={item.followUpFrequency || "Frequencia a definir"} />}>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Field disabled={!editing} label="Nome do processo" value={current.processName} onChange={(value) => setDraft({ ...current, processName: value })} />
+          <Select disabled={!editing} label="Guardiao responsavel" value={current.guardianPerson} onChange={(value) => setDraft({ ...current, guardianPerson: value })} options={["", ...people.map((person) => person.name)]} />
+          <Field disabled={!editing} label="Descricao do processo" area value={current.processDescription} onChange={(value) => setDraft({ ...current, processDescription: value })} />
+          <Select disabled={!editing} label="Rotina associada" value={current.routineId} onChange={(value) => setDraft({ ...current, routineId: value })} options={["", ...routines.map((routine) => routine.id)]} labels={{ "": "Sem rotina vinculada", ...routineLabels }} />
+          <Select disabled={!editing} label="Frequencia de acompanhamento" value={current.followUpFrequency} onChange={(value) => setDraft({ ...current, followUpFrequency: value })} options={frequencyOptions} />
+          <Field disabled={!editing} label="Observacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
+        </div>
+        <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+        {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este guardiao permanentemente?")) deleteGuardian(row.id); }}><Trash2 size={16} /> Excluir guardiao</button></ActionBar>}
+      </CardLayout>
+    </Panel>
+  );
+}
+
+const deliveryMilestones: DeliveryGuideItem["milestone"][] = ["30 dias", "60 dias", "90 dias", "120 dias"];
+const managementSuccessPhrase = "Time coeso, com roadmap integrado e forte conexao com as areas de negocio e com o mercado, munido de instrumentos que permitam gerar valor, reduzir custos, aumentar a eficiencia e impulsionar a transformacao da area.";
+
+function DeliveryGuidePanel({
+  rows,
+  indicators,
+  addDelivery,
+  deleteDelivery,
+  onDelivery,
+  addIndicator,
+  deleteIndicator,
+  onIndicator,
+  canEdit
+}: {
+  rows: DeliveryGuideItem[];
+  indicators: SuccessIndicator[];
+  addDelivery: () => Promise<string>;
+  deleteDelivery: (id: string) => void;
+  onDelivery: (row: DeliveryGuideItem) => void;
+  addIndicator: () => Promise<string>;
+  deleteIndicator: (id: string) => void;
+  onIndicator: (row: SuccessIndicator) => void;
+  canEdit: boolean;
+}) {
+  const [selected, setSelected] = useState(rows[0]?.id || "");
+  const [selectedIndicator, setSelectedIndicator] = useState(indicators[0]?.id || "");
+  const row = rows.find((item) => item.id === selected) || rows[0];
+  const indicator = indicators.find((item) => item.id === selectedIndicator) || indicators[0];
+  const [draft, setDraft] = useState(row);
+  const [indicatorDraft, setIndicatorDraft] = useState(indicator);
+  const [editing, setEditing] = useState(false);
+  const [editingIndicator, setEditingIndicator] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+  useEffect(() => {
+    setDraft(row);
+    setEditing(false);
+    setSaved(false);
+  }, [row?.id]);
+  useEffect(() => {
+    setIndicatorDraft(indicator);
+    setEditingIndicator(false);
+    setSavedIndicator(false);
+  }, [indicator?.id]);
+  const createDelivery = async () => {
+    const id = await addDelivery();
+    if (id) {
+      setSelected(id);
+      setEditing(true);
+    }
+  };
+  const createIndicator = async () => {
+    const id = await addIndicator();
+    if (id) {
+      setSelectedIndicator(id);
+      setEditingIndicator(true);
+    }
+  };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deliveryStats = deliveryMilestones.map((milestone) => {
+    const milestoneRows = rows.filter((item) => item.milestone === milestone);
+    const done = milestoneRows.filter((item) => item.status === "Concluido").length;
+    return [milestone, String(milestoneRows.length), String(done), milestoneRows.length ? percent(done / milestoneRows.length) : "0%"];
+  });
+  const upcoming = rows
+    .filter((item) => item.status !== "Concluido" && item.plannedDate)
+    .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate))
+    .slice(0, 5);
+  const overdue = rows.filter((item) => item.status !== "Concluido" && item.plannedDate && parseLocalDate(item.plannedDate) < today);
+  const saveDelivery = () => {
+    if (!draft) return;
+    onDelivery(draft);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clearDelivery = () => {
+    if (!draft || !window.confirm("Tem certeza que deseja limpar esta entrega? Nome e marco serao preservados.")) return;
+    setDraft({ ...draft, description: "", category: "", priority: "Media", plannedDate: "", completedDate: "", status: "Nao iniciado", expectedResult: "", achievedResult: "", comments: "" });
+    setSaved(false);
+  };
+  const saveIndicator = () => {
+    if (!indicatorDraft) return;
+    onIndicator(indicatorDraft);
+    setEditingIndicator(false);
+    setSavedIndicator(true);
+  };
+  const clearIndicator = () => {
+    if (!indicatorDraft || !window.confirm("Tem certeza que deseja limpar este indicador? Nome sera preservado.")) return;
+    setIndicatorDraft({ ...indicatorDraft, expectedResult: "", currentResult: "", status: "Nao iniciado", targetDate: "", owner: "", notes: "" });
+    setSavedIndicator(false);
+  };
+  return (
+    <div className="space-y-6">
+      <Panel title="Guia de Entregas" action={canEdit ? <button className="btn" onClick={createDelivery}><Plus size={16} /> Nova entrega</button> : <Badge tone="warn">Somente leitura</Badge>}>
+        <div className="mb-5 rounded-md border border-leaf/30 bg-leaf/10 p-4">
+          <p className="text-sm font-semibold text-leaf">Frase de sucesso da gestao</p>
+          <p className="mt-2 text-lg font-semibold">{managementSuccessPhrase}</p>
+        </div>
+        <div className="mb-5 grid gap-3 md:grid-cols-4">
+          {deliveryStats.map(([milestone, planned, done, execution]) => <Metric key={milestone} title={milestone} value={`${done}/${planned}`} note={`${execution} executado`} />)}
+        </div>
+        <div className="mb-5 grid gap-4 lg:grid-cols-2">
+          <Panel title="Proximas entregas">
+            <RankedRows items={(upcoming.length ? upcoming : rows.slice(0, 5)).map((item) => [item.name, item.plannedDate || item.status])} />
+          </Panel>
+          <Panel title="Entregas atrasadas">
+            <Metric title="Atrasadas" value={String(overdue.length)} note="status diferente de concluido" />
+            <RankedRows items={overdue.slice(0, 5).map((item) => [item.name, item.plannedDate])} />
+          </Panel>
+        </div>
+        {!row || !draft ? (
+          <div className="rounded-md border border-dashed border-line bg-surface p-8 text-center">
+            <Target className="mx-auto text-muted" size={30} />
+            <h3 className="mt-3 font-semibold">Nenhuma entrega cadastrada</h3>
+            <p className="mt-1 text-sm text-muted">Use Nova entrega para registrar compromissos dos primeiros meses.</p>
+          </div>
+        ) : (
+          <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={`${item.milestone} | ${item.status}`} meta={item.plannedDate || "Sem data"} />}>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <Field disabled={!editing} label="Nome da entrega" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
+              <Select disabled={!editing} label="Marco" value={draft.milestone} onChange={(value) => setDraft({ ...draft, milestone: value as DeliveryGuideItem["milestone"] })} options={deliveryMilestones} />
+              <Field disabled={!editing} label="Descricao" area value={draft.description} onChange={(value) => setDraft({ ...draft, description: value })} />
+              <Field disabled={!editing} label="Categoria" value={draft.category} onChange={(value) => setDraft({ ...draft, category: value })} />
+              <Select disabled={!editing} label="Prioridade" value={draft.priority} onChange={(value) => setDraft({ ...draft, priority: value as Priority })} options={["Alta", "Media", "Baixa"]} />
+              <Select disabled={!editing} label="Status" value={draft.status} onChange={(value) => setDraft({ ...draft, status: value as DeliveryGuideItem["status"] })} options={["Nao iniciado", "Em andamento", "Concluido"]} />
+              <Field disabled={!editing} label="Data planejada" type="date" value={draft.plannedDate} onChange={(value) => setDraft({ ...draft, plannedDate: value })} />
+              <Field disabled={!editing} label="Data realizada" type="date" value={draft.completedDate} onChange={(value) => setDraft({ ...draft, completedDate: value })} />
+              <Field disabled={!editing} label="Resultado esperado" area value={draft.expectedResult} onChange={(value) => setDraft({ ...draft, expectedResult: value })} />
+              <Field disabled={!editing} label="Resultado alcancado" area value={draft.achievedResult} onChange={(value) => setDraft({ ...draft, achievedResult: value })} />
+              <Field disabled={!editing} label="Comentarios" area value={draft.comments} onChange={(value) => setDraft({ ...draft, comments: value })} />
+            </div>
+            <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={saveDelivery} onClear={clearDelivery} />
+            {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir esta entrega permanentemente?")) deleteDelivery(row.id); }}><Trash2 size={16} /> Excluir entrega</button></ActionBar>}
+          </CardLayout>
+        )}
+      </Panel>
+      <Panel title="Indicadores de Sucesso da Gestao" action={canEdit ? <button className="btn" onClick={createIndicator}><Plus size={16} /> Novo indicador</button> : <Badge tone="warn">Somente leitura</Badge>}>
+        <div className="mb-4 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="border-b border-line text-xs uppercase text-muted">
+              <tr>
+                <th className="py-2 pr-3">Indicador</th>
+                <th className="py-2 pr-3">Resultado esperado</th>
+                <th className="py-2 pr-3">Resultado atual</th>
+                <th className="py-2 pr-3">Status</th>
+                <th className="py-2 pr-3">Data-alvo</th>
+                <th className="py-2 pr-3">Responsavel</th>
+              </tr>
+            </thead>
+            <tbody>
+              {indicators.map((item) => (
+                <tr key={item.id} className="cursor-pointer border-b border-line/70 hover:bg-leaf/10" onClick={() => setSelectedIndicator(item.id)}>
+                  <td className="py-2 pr-3 font-semibold">{item.indicator}</td>
+                  <td className="py-2 pr-3 text-muted">{item.expectedResult || "A preencher"}</td>
+                  <td className="py-2 pr-3">{item.currentResult || "A preencher"}</td>
+                  <td className="py-2 pr-3">{item.status}</td>
+                  <td className="py-2 pr-3">{item.targetDate || "Sem data"}</td>
+                  <td className="py-2 pr-3">{item.owner || "A definir"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {indicator && indicatorDraft && (
+          <CardLayout rows={indicators} selected={indicator.id} onSelect={setSelectedIndicator} renderCard={(item) => <Summary title={item.indicator} subtitle={item.status} meta={item.targetDate || "Sem data-alvo"} />}>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <Field disabled={!editingIndicator} label="Indicador" value={indicatorDraft.indicator} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, indicator: value })} />
+              <Select disabled={!editingIndicator} label="Status" value={indicatorDraft.status} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, status: value as SuccessIndicator["status"] })} options={["Nao iniciado", "Em andamento", "Concluido", "Em risco"]} />
+              <Field disabled={!editingIndicator} label="Resultado esperado" area value={indicatorDraft.expectedResult} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, expectedResult: value })} />
+              <Field disabled={!editingIndicator} label="Resultado atual" area value={indicatorDraft.currentResult} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, currentResult: value })} />
+              <Field disabled={!editingIndicator} label="Data-alvo" type="date" value={indicatorDraft.targetDate} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, targetDate: value })} />
+              <Field disabled={!editingIndicator} label="Responsavel" value={indicatorDraft.owner} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, owner: value })} />
+              <Field disabled={!editingIndicator} label="Observacoes" area value={indicatorDraft.notes} onChange={(value) => setIndicatorDraft({ ...indicatorDraft, notes: value })} />
+            </div>
+            <EditActions canEdit={canEdit} editing={editingIndicator} saved={savedIndicator} updatedAt={indicator.updatedAt} onEdit={() => setEditingIndicator(true)} onCancel={() => { setIndicatorDraft(indicator); setEditingIndicator(false); }} onSave={saveIndicator} onClear={clearIndicator} />
+            {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este indicador permanentemente?")) deleteIndicator(indicator.id); }}><Trash2 size={16} /> Excluir indicador</button></ActionBar>}
+          </CardLayout>
+        )}
+      </Panel>
+    </div>
   );
 }
 
@@ -1320,7 +1789,7 @@ function CardLayout<T extends { id: string }>({ rows, selected, onSelect, render
     <div className="grid gap-4 lg:grid-cols-[310px_1fr]">
       <div className="grid max-h-[72vh] gap-2 overflow-auto pr-1">
         {rows.map((row) => (
-          <button key={row.id} className={`rounded-md border p-3 text-left ${selected === row.id ? "border-leaf bg-leaf/10" : "border-line bg-surface"}`} onClick={() => onSelect(row.id)}>
+          <button key={row.id} className={`rounded-md border p-3 text-left ${selected === row.id ? "border-leaf bg-leaf/10" : isKeyLeader((row as { name?: string }).name || "") ? "border-leaf/50 bg-leaf/10" : "border-line bg-surface"}`} onClick={() => onSelect(row.id)}>
             {renderCard(row)}
           </button>
         ))}
@@ -1570,10 +2039,61 @@ function Badge({ children, tone = "ok" }: { children: ReactNode; tone?: "ok" | "
   return <span className={`rounded-md border px-3 py-2 text-sm ${tone === "warn" ? "border-coral/30 bg-coral/10" : "border-leaf/30 bg-leaf/10"}`}>{children}</span>;
 }
 
+function isKeyLeader(name: string) {
+  const normalized = name.toLowerCase();
+  return normalized.includes("keyze") || normalized.includes("juliana");
+}
+
+const strategicQuestions = [
+  {
+    title: "Visao da Area",
+    questions: [
+      "Como voce enxerga este movimento de transicao?",
+      "Como voce visualiza o futuro da area?"
+    ]
+  },
+  {
+    title: "Lideranca e Estrutura",
+    questions: [
+      "Quais sao os principais desafios da area hoje?",
+      "Que perfil de profissional precisamos fortalecer ou trazer para o time?"
+    ]
+  },
+  {
+    title: "Motivacao",
+    questions: [
+      "O que voce mais gosta de fazer?",
+      "Onde voce acredita gerar mais valor?"
+    ]
+  },
+  {
+    title: "Futuro",
+    questions: [
+      "Como voce imagina a evolucao da area nos proximos anos?",
+      "Quais oportunidades ainda nao estamos explorando?"
+    ]
+  }
+];
+
+const leadershipChecklistItems = [
+  "Relacao Pessoas x Carteiras",
+  "Workload do Time",
+  "Avaliacoes Individuais",
+  "Posicoes Abertas",
+  "Possiveis Movimentacoes de Estrutura",
+  "Temas Criticos",
+  "Temas Quentes",
+  "Necessidades de Apoio",
+  "Metas Financeiras",
+  "Oportunidades Financeiras"
+];
+
 function calculateMetrics(data: AppData) {
   const peopleDone = data.people.filter((item) => item.firstOneOnOne).length;
   const handoverDone = data.handoverChecklist.filter((item) => item.status === "Concluido").length;
   const coachingDone = data.coachingSessions.filter((item) => item.sessionDate).length;
+  const deliveryDone = data.deliveryGuideItems.filter((item) => item.status === "Concluido").length;
+  const guardiansAssigned = data.guardians.filter((item) => item.guardianPerson).length;
   const stakeholdersDone = data.stakeholders.filter((item) => item.conversationDate || item.firstConversation).length;
   const scopedSuppliers = data.suppliers.filter(isSupplierScoped);
   const supplierGoal = Math.max(1, scopedSuppliers.length || Math.min(20, data.suppliers.length));
@@ -1591,6 +2111,8 @@ function calculateMetrics(data: AppData) {
     peopleDone,
     handoverDone,
     coachingDone,
+    deliveryDone,
+    guardiansAssigned,
     stakeholdersDone,
     suppliersDone,
     supplierGoal,
