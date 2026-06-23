@@ -26,6 +26,11 @@ export type Person = {
   succession: string;
   development: string;
   notes: string;
+  strategicAnswers: string;
+  leadershipChecklist: string[];
+  futureLeadershipMatch: string;
+  futureLeadershipGap: string;
+  futureLeadershipDecision: string;
 };
 
 export type Stakeholder = {
@@ -117,6 +122,7 @@ export type HandoverItem = {
   dueDate: string;
   links: string;
   attachments: Attachment[];
+  section: "handover" | "administrativo";
   updatedAt: string;
 };
 
@@ -147,6 +153,45 @@ export type ClientRoutine = {
   perceptions: string;
   improvements: string;
   futureAdjustments: string;
+  updatedAt: string;
+};
+
+export type Guardian = {
+  id: string;
+  processName: string;
+  processDescription: string;
+  guardianPerson: string;
+  routineId: string;
+  followUpFrequency: string;
+  notes: string;
+  updatedAt: string;
+};
+
+export type DeliveryGuideItem = {
+  id: string;
+  name: string;
+  description: string;
+  milestone: "30 dias" | "60 dias" | "90 dias" | "120 dias";
+  category: string;
+  priority: Priority;
+  plannedDate: string;
+  completedDate: string;
+  status: "Nao iniciado" | "Em andamento" | "Concluido";
+  expectedResult: string;
+  achievedResult: string;
+  comments: string;
+  updatedAt: string;
+};
+
+export type SuccessIndicator = {
+  id: string;
+  indicator: string;
+  expectedResult: string;
+  currentResult: string;
+  status: "Nao iniciado" | "Em andamento" | "Concluido" | "Em risco";
+  targetDate: string;
+  owner: string;
+  notes: string;
   updatedAt: string;
 };
 
@@ -200,6 +245,9 @@ export type AppData = {
   handoverChecklist: HandoverItem[];
   coachingSessions: CoachingSession[];
   clientRoutines: ClientRoutine[];
+  guardians: Guardian[];
+  deliveryGuideItems: DeliveryGuideItem[];
+  successIndicators: SuccessIndicator[];
   orgScenarios: OrgScenario[];
   orgScenarioItems: OrgScenarioItem[];
   userPreferences: UserPreference;
