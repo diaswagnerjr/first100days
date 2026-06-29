@@ -863,8 +863,9 @@ function PillarsPanel({ rows, onChange, canEdit }: { rows: MethodologyPillar[]; 
 }
 
 function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; categories: Category[]; onChange: (row: Person) => void; canEdit: boolean }) {
-  const [selected, setSelected] = useState(rows[0]?.id || "");
-  const row = rows.find((item) => item.id === selected) || rows[0];
+  const sortedRows = [...rows].sort((a, b) => peopleSortRank(a) - peopleSortRank(b) || a.name.localeCompare(b.name));
+  const [selected, setSelected] = useState(sortedRows[0]?.id || "");
+  const row = rows.find((item) => item.id === selected) || sortedRows[0];
   const [draft, setDraft] = useState(row);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -877,9 +878,10 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
   }, [row?.id]);
   if (!row) return null;
   const current = draft || row;
+  const checklistItems = isKeyLeader(current.name) ? leadershipChecklistItems : peopleChecklistItems;
   const assigned = new Set(rows.flatMap((person) => person.id === current.id ? current.categoryIds : person.categoryIds));
   const unassigned = categories.filter((category) => !assigned.has(category.id));
-  const matrixRows = rows.map((person) => {
+  const matrixRows = sortedRows.map((person) => {
     const categoryIds = person.id === current.id ? current.categoryIds : person.categoryIds;
     return [person.name, String(categoryIds.length), money(spendFor(categories, categoryIds))];
   });
@@ -928,7 +930,7 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
   };
   return (
     <Panel title="Pessoas do time">
-      <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={item.role} meta={item.firstOneOnOne ? "1:1 realizada" : "0/1 conversa"} />}>
+      <CardLayout rows={sortedRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={item.role} meta={item.firstOneOnOne ? "1:1 realizada" : "0/1 conversa"} />}>
         <div className="grid gap-3 lg:grid-cols-2">
           <Field disabled={!editing} label="Nome" value={current.name} onChange={(value) => setDraft({ ...current, name: value })} />
           <Field disabled={!editing} label="Cargo" value={current.role} onChange={(value) => setDraft({ ...current, role: value })} />
@@ -973,7 +975,7 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
         <div className="mt-5 rounded-md border border-line bg-surface p-4">
           <h3 className="font-semibold">Checklist de Validacao</h3>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {leadershipChecklistItems.map((item) => (
+            {checklistItems.map((item) => (
               <label key={item} className="flex items-center gap-2 rounded-md border border-line bg-card px-3 py-2 text-sm">
                 <input
                   disabled={!editing}
@@ -2136,12 +2138,19 @@ function isKeyLeader(name: string) {
   return normalized.includes("keyze") || normalized.includes("juliana");
 }
 
+function peopleSortRank(person: Person) {
+  const normalized = person.name.toLowerCase();
+  if (normalized.includes("juliana")) return 0;
+  if (normalized.includes("keyze")) return 1;
+  return 2;
+}
+
 function normalizeLeadershipChecklist(items: string[]) {
   const normalized = new Set<string>();
   items.forEach((item) => {
     if (item === "Temas Quentes" || item === "Temas Criticos" || item === "Temas Criticos / Temas Quentes") normalized.add("Temas Criticos");
     else if (item === "Metas Financeiras") normalized.add("Metas");
-    else if (leadershipChecklistItems.includes(item)) normalized.add(item);
+    else if ([...leadershipChecklistItems, ...peopleChecklistItems].includes(item)) normalized.add(item);
   });
   return Array.from(normalized);
 }
@@ -2178,6 +2187,21 @@ const strategicQuestions = [
 ];
 
 const leadershipChecklistItems = [
+  "Relacao Pessoas x Carteiras",
+  "Workload do Time",
+  "Avaliacoes Individuais",
+  "Posicoes Abertas",
+  "Possiveis Movimentacoes de Estrutura",
+  "Motivacao",
+  "Temas Criticos",
+  "Metas",
+  "Necessidades de Apoio",
+  "Oportunidades Financeiras",
+  "Alinhamento de Conversas com Stakeholders",
+  "Alinhamento de Conversas com Fornecedores"
+];
+
+const peopleChecklistItems = [
   "Motivacao",
   "Temas Criticos",
   "Metas",
