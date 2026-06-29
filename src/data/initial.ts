@@ -30,6 +30,29 @@ const inferArea = (name: string, index: number) => {
   return areas[index % areas.length];
 };
 
+const sommosByPerson: Record<string, { role: string; sommos: string }> = {
+  "BRUNA FERREIRA": { role: "Analista Pl.", sommos: "Dentro do esperado" },
+  DENIS: { role: "Analista Sr.", sommos: "Dentro do esperado" },
+  "GABRIEL MENEZES": { role: "Consultor I", sommos: "Dentro do esperado" },
+  "ISABELLA DA SILVA": { role: "Estagiário", sommos: "Dentro do esperado" },
+  "JOÃO VICTOR": { role: "Analista Sr.", sommos: "Acima do esperado" },
+  "PEDRO ESCOBAR": { role: "Analista Sr.", sommos: "Acima do esperado" },
+  "RAFAEL IURY": { role: "Analista Pl.", sommos: "Dentro do esperado" },
+  "RHENAN CAETANO": { role: "Analista Sr.", sommos: "Acima do esperado" },
+  "THAIS GOIS": { role: "Consultor I", sommos: "Abaixo do esperado" }
+};
+
+export const portfolioCategoryNamesByPerson: Record<string, string[]> = {
+  "GABRIEL MENEZES": ["FORNECIM ALIM-FLORT", "FORNECIM ALIM-INDL", "SERV DESPACHANTE", "SERV MAO OBRA TERC"],
+  "JOÃO VICTOR": ["FROTA LEVE", "SERV LOC IMOVEL", "SERV LOC VEICULO LEV", "SERV VIG/MON CFTV"],
+  "BRUNA FERREIRA": ["SERV AGENC PROPAGAND", "SERV CARTAO BENEFIC", "SERV PESQ QUAL OPER", "SERV TRADE MARKETING", "SERV TRANSP MUDANCA"],
+  "THAIS GOIS": ["SERV CONTROLE PRAGAS", "SERV JARDINAGEM", "SERV LIMPEZA/VIGILANCIA", "SERV LIMPEZA/VIGILANCIA CD"],
+  "PEDRO ESCOBAR": ["SERV FRET AEREO", "SERV FRETAM FLORT", "SERV FRETAM INDL", "SERV TAXI", "TRANSP ALIMENTAÇAO"],
+  DENIS: ["SERV CONS TECN", "SERV CONS TI", "SERV GERENC SERVIDOR", "SERV LIC DIREIT C/TI", "SERV LIC DIREIT S/TI", "SERV LINK DADOS SAT", "SERV MOVEL ESP RADIO", "SERV TELEMETRIA", "SERV TI-SUPORTE TECN"],
+  "RAFAEL IURY": ["Hardware/Compra de equipamento", "SERV CONS TECN", "SERV CONS TI", "SERV GERENC SERVIDOR", "SERV LIC DIREIT C/TI", "SERV LIC DIREIT S/TI", "SERV LOC EQUIP INFOR", "SERV OUTSOURC IMPRES", "SERV SIST AUTOMAC TI", "SERV TI-SUPORTE TECN"],
+  "RHENAN CAETANO": ["SERV CONS TECN", "SERV CONS TI", "SERV GERENC SERVIDOR", "SERV LIC DIREIT C/TI", "SERV LIC DIREIT S/TI", "SERV LIC DIREIT SAP", "SERV TI-SUPORTE TECN"]
+};
+
 export const peopleSeed: Person[] = [
   ["Juliana Cardoso Gomes", "Coordenadora"],
   ["João Victor", "Analista Sr"],
@@ -45,14 +68,14 @@ export const peopleSeed: Person[] = [
 ].map(([name, role], index) => ({
   id: id("person", index),
   name,
-  role,
+  role: sommosByPerson[name.toUpperCase()]?.role || role,
   cluster: index === 0 ? "Lideranca" : "A definir",
   portfolios: "",
   categoryIds: [],
   firstOneOnOne: "",
   nextConversation: "",
   agendaStatus: "Agendar 1:1",
-  sommos: "",
+  sommos: sommosByPerson[name.toUpperCase()]?.sommos || "",
   sommosScore: 0,
   performance: 3,
   potential: 3,
@@ -61,6 +84,11 @@ export const peopleSeed: Person[] = [
   softSkills: "",
   hardSkillsScore: 3,
   softSkillsScore: 3,
+  currentCapabilities: "",
+  futureCapabilities: "",
+  capabilityGaps: "",
+  pdiOriented: "",
+  capabilityNotes: "",
   strengths: "",
   attentionPoints: "",
   risks: "",

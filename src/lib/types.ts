@@ -20,6 +20,11 @@ export type Person = {
   softSkills: string;
   hardSkillsScore: number;
   softSkillsScore: number;
+  currentCapabilities: string;
+  futureCapabilities: string;
+  capabilityGaps: string;
+  pdiOriented: string;
+  capabilityNotes: string;
   strengths: string;
   attentionPoints: string;
   risks: string;

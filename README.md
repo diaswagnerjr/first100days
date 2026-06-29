@@ -33,6 +33,9 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Modo Editar/Salvar/Limpar com confirmacao nos modulos operacionais
 - Sliders 1-5 de hard skills e soft skills em Pessoas
 - Controle de categorias nao atribuidas e matriz pessoa x categorias
+- Carteiras de Pessoas carregadas da planilha `Analise de Carteiras.xlsx`, com categorias editaveis por pessoa
+- Avaliacao SOMMOS pre-carregada para o time, preservando edicao manual
+- Campos de Pessoas reorganizados em capacidades atuais, capacidades futuras, gaps, PDI orientado e anotacoes
 - Handover agrupavel por cluster
 - Checklist administrativo no Handover Thais, com inclusao e exclusao de itens
 - Cards de Keyze e Juliana destacados como liderancas-chave, com perguntas estrategicas, checklist de validacao e avaliacao de match futuro
@@ -46,6 +49,7 @@ Os dados de spend foram extraidos das planilhas anexadas:
 
 - `Spend por fornecedor 2025 e 2026 ytd.xlsx`: 525 fornecedores, total aproximado de R$ 2,030 bi.
 - `Spend categorias pb.xlsx`: 41 categorias, total aproximado de R$ 1,904 bi.
+- `Analise de Carteiras.xlsx`: mapa de categorias por pessoa usado para preencher carteiras na aba Pessoas.
 
 O seed tambem inclui as 11 pessoas iniciais do time e os principais grupos de stakeholders.
 
@@ -77,8 +81,9 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 6. Execute o SQL incremental em `supabase/migrations/20260607165000_owner_viewer_access.sql`.
 7. Execute o SQL incremental em `supabase/migrations/20260621190000_coaching_client_routines_and_timeline.sql`.
 8. Execute o SQL incremental em `supabase/migrations/20260623120000_guardians_delivery_handover_people.sql`.
-9. Confira se Auth esta habilitado com e-mail/senha.
-10. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
+9. Execute o SQL incremental em `supabase/migrations/20260629120000_people_carteiras_sommos_capabilities.sql`.
+10. Confira se Auth esta habilitado com e-mail/senha.
+11. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -105,6 +110,7 @@ Notas funcionais:
 - A migration final adiciona `hard_skills_score`, `soft_skills_score` e `handover_checklist.cluster`, alem de trigger para classificar novos itens de handover.
 - A migration de acesso troca as policies para permitir escrita somente ao usuario principal e leitura ao visualizador autorizado.
 - A migration `20260623120000_guardians_delivery_handover_people.sql` adiciona somente estruturas incrementais: novos campos em Pessoas, secao do handover, Guardioes, Guia de Entregas e Indicadores de Sucesso. Ela nao apaga, sobrescreve ou reinicializa dados cadastrados.
+- A migration `20260629120000_people_carteiras_sommos_capabilities.sql` adiciona campos incrementais em Pessoas, carrega SOMMOS e une as categorias da planilha de carteiras com qualquer atribuicao ja existente. Ela nao apaga anotacoes antigas.
 - A guia `Estrutura` foi removida da navegacao, mas as tabelas antigas `org_scenarios` e `org_scenario_items` foram preservadas para compatibilidade e historico.
 
 ## GitHub Pages

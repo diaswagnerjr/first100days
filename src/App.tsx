@@ -39,6 +39,7 @@ import {
   orgScenarioItemsSeed,
   orgScenariosSeed,
   peopleSeed,
+  portfolioCategoryNamesByPerson,
   stakeholdersSeed,
   suppliersInitial
 } from "./data/initial";
@@ -180,17 +181,53 @@ const fromSnake = <T,>(row: Record<string, unknown>) => {
 
 const asArray = (value: unknown) => (Array.isArray(value) ? value.map(String) : typeof value === "string" && value ? value.split(",").map((item) => item.trim()) : []);
 const todayIso = () => new Date().toISOString();
+const joinText = (...values: Array<string | undefined>) => values.map((value) => value?.trim()).filter(Boolean).join("\n\n");
+const normalizeLookup = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+
+const portfolioAliases: Record<string, string> = {
+  "DENIS SANTANA": "DENIS",
+  "DENIS ROBSON PRIMO SANTANA": "DENIS",
+  "RAFAEL YURI": "RAFAEL IURY",
+  "RHENAN MORGADO": "RHENAN CAETANO",
+  "RHENAN CAETANO": "RHENAN CAETANO",
+  "ISABELLA MACIEL": "ISABELLA DA SILVA"
+};
+
+const plannedPortfolioNames = (personName: string) => {
+  const key = normalizeLookup(personName);
+  const canonical = portfolioAliases[key] || key;
+  return portfolioCategoryNamesByPerson[canonical] || [];
+};
+
+const applyPeoplePortfolioDefaults = (people: Person[], categories: Category[]) => {
+  const categoryByName = new Map(categories.map((category) => [normalizeLookup(category.name), category]));
+  const categoryIds = new Set(categories.map((category) => category.id));
+  return people.map((person) => {
+    const validExisting = (person.categoryIds || []).filter((id) => categoryIds.has(id));
+    const plannedIds = plannedPortfolioNames(person.name)
+      .map((name) => categoryByName.get(normalizeLookup(name))?.id)
+      .filter(Boolean) as string[];
+    const nextIds = Array.from(new Set([...validExisting, ...plannedIds]));
+    if (nextIds.length === validExisting.length && validExisting.length === (person.categoryIds || []).length) return person;
+    return { ...person, categoryIds: nextIds, portfolios: labelsFor(categories, nextIds).join(", ") };
+  });
+};
 
 const normalizePerson = (row: Person): Person => ({
   ...peopleSeed[0],
   ...row,
   categoryIds: asArray(row.categoryIds),
-  leadershipChecklist: asArray(row.leadershipChecklist),
+  leadershipChecklist: normalizeLeadershipChecklist(asArray(row.leadershipChecklist)),
   potentialNotes: row.potentialNotes || "",
   hardSkills: row.hardSkills || "",
   softSkills: row.softSkills || "",
   hardSkillsScore: Number(row.hardSkillsScore || 3),
   softSkillsScore: Number(row.softSkillsScore || 3),
+  currentCapabilities: row.currentCapabilities || joinText(row.strengths, row.hardSkills, row.softSkills),
+  futureCapabilities: row.futureCapabilities || "",
+  capabilityGaps: row.capabilityGaps || joinText(row.attentionPoints, row.risks),
+  pdiOriented: row.pdiOriented || row.development || "",
+  capabilityNotes: row.capabilityNotes || joinText(row.notes, row.potentialNotes),
   strategicAnswers: row.strategicAnswers || "",
   futureLeadershipMatch: row.futureLeadershipMatch || "",
   futureLeadershipGap: row.futureLeadershipGap || "",
@@ -213,7 +250,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
   const [data, setData] = useState<AppData>(() => {
     const theme = (localStorage.getItem("first100days-theme") as "light" | "dark" | null) || "light";
-    return { ...initialData, userPreferences: { ...initialData.userPreferences, theme } };
+    return { ...initialData, people: applyPeoplePortfolioDefaults(initialData.people, initialData.categories), userPreferences: { ...initialData.userPreferences, theme } };
   });
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState("");
@@ -317,11 +354,13 @@ function App() {
       }
       const pref = normalizePreferences(preferences.data ? fromSnake<UserPreference>(preferences.data) : initialData.userPreferences);
       const nextPref = isViewer ? pref : await recordAccess(userId, pref);
+      const mappedCategories = categories.data?.length ? categories.data.map((row: Record<string, unknown>) => fromSnake<Category>(row)) : categoriesInitial;
+      const mappedPeople = applyPeoplePortfolioDefaults(people.data.map((row: Record<string, unknown>) => normalizePerson(fromSnake<Person>(row))), mappedCategories);
       setData({
-        people: people.data.map((row: Record<string, unknown>) => normalizePerson(fromSnake<Person>(row))),
+        people: mappedPeople,
         stakeholders: stakeholders.data?.map((row: Record<string, unknown>) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? initialData.stakeholders,
         suppliers: suppliers.data?.length ? suppliers.data.map((row: Record<string, unknown>) => normalizeSupplier(fromSnake<Supplier>(row))) : suppliersInitial,
-        categories: categories.data?.length ? categories.data.map((row: Record<string, unknown>) => fromSnake<Category>(row)) : categoriesInitial,
+        categories: mappedCategories,
         diagnosis: diagnosis.data ? fromSnake<Diagnosis>(diagnosis.data) : initialData.diagnosis,
         methodologyPillars: pillars.data?.map((row: Record<string, unknown>) => normalizePillar(fromSnake<MethodologyPillar>(row))) ?? initialData.methodologyPillars,
         handoverChecklist: handover.data?.map((row: Record<string, unknown>) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
@@ -868,6 +907,11 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
       softSkills: "",
       hardSkillsScore: 3,
       softSkillsScore: 3,
+      currentCapabilities: "",
+      futureCapabilities: "",
+      capabilityGaps: "",
+      pdiOriented: "",
+      capabilityNotes: "",
       strengths: "",
       attentionPoints: "",
       risks: "",
@@ -894,13 +938,11 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
           <Field disabled={!editing} label="Potencial" value={current.potentialNotes} onChange={(value) => setDraft({ ...current, potentialNotes: value })} />
           <Slider disabled={!editing} label="Hard skills para a cadeira" value={current.hardSkillsScore} onChange={(value) => setDraft({ ...current, hardSkillsScore: value })} />
           <Slider disabled={!editing} label="Soft skills para a cadeira" value={current.softSkillsScore} onChange={(value) => setDraft({ ...current, softSkillsScore: value })} />
-          <Field disabled={!editing} label="Notas de hard skills" area value={current.hardSkills} onChange={(value) => setDraft({ ...current, hardSkills: value })} />
-          <Field disabled={!editing} label="Notas de soft skills" area value={current.softSkills} onChange={(value) => setDraft({ ...current, softSkills: value })} />
-          <Field disabled={!editing} label="Pontos fortes" area value={current.strengths} onChange={(value) => setDraft({ ...current, strengths: value })} />
-          <Field disabled={!editing} label="Pontos de atencao" area value={current.attentionPoints} onChange={(value) => setDraft({ ...current, attentionPoints: value })} />
-          <Field disabled={!editing} label="Riscos" area value={current.risks} onChange={(value) => setDraft({ ...current, risks: value })} />
-          <Field disabled={!editing} label="Plano de desenvolvimento" area value={current.development} onChange={(value) => setDraft({ ...current, development: value })} />
-          <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
+          <Field disabled={!editing} label="Habilidades (capacidades atuais)" area value={current.currentCapabilities} onChange={(value) => setDraft({ ...current, currentCapabilities: value })} />
+          <Field disabled={!editing} label="Capacidades futuras exigidas" area value={current.futureCapabilities} onChange={(value) => setDraft({ ...current, futureCapabilities: value })} />
+          <Field disabled={!editing} label="Capacidades que faltam" area value={current.capabilityGaps} onChange={(value) => setDraft({ ...current, capabilityGaps: value })} />
+          <Field disabled={!editing} label="PDI orientado" area value={current.pdiOriented} onChange={(value) => setDraft({ ...current, pdiOriented: value })} />
+          <Field disabled={!editing} label="Anotacoes" area value={current.capabilityNotes} onChange={(value) => setDraft({ ...current, capabilityNotes: value })} />
         </div>
         {isKeyLeader(current.name) && (
           <div className="mt-5 space-y-4 rounded-md border border-leaf/30 bg-leaf/10 p-4">
@@ -921,27 +963,6 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
               </div>
               <Field disabled={!editing} label="Respostas e leitura da conversa" area value={current.strategicAnswers} onChange={(value) => setDraft({ ...current, strategicAnswers: value })} />
             </div>
-            <div>
-              <h3 className="font-semibold">Checklist de Validacao</h3>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {leadershipChecklistItems.map((item) => (
-                  <label key={item} className="flex items-center gap-2 rounded-md border border-line bg-card px-3 py-2 text-sm">
-                    <input
-                      disabled={!editing}
-                      type="checkbox"
-                      checked={current.leadershipChecklist.includes(item)}
-                      onChange={(event) => {
-                        const next = event.target.checked
-                          ? [...current.leadershipChecklist, item]
-                          : current.leadershipChecklist.filter((value) => value !== item);
-                        setDraft({ ...current, leadershipChecklist: next });
-                      }}
-                    />
-                    {item}
-                  </label>
-                ))}
-              </div>
-            </div>
             <div className="grid gap-3 lg:grid-cols-3">
               <Field disabled={!editing} label="Match com a lideranca futura" area value={current.futureLeadershipMatch} onChange={(value) => setDraft({ ...current, futureLeadershipMatch: value })} />
               <Field disabled={!editing} label="O que ainda nao tem match" area value={current.futureLeadershipGap} onChange={(value) => setDraft({ ...current, futureLeadershipGap: value })} />
@@ -949,6 +970,27 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
             </div>
           </div>
         )}
+        <div className="mt-5 rounded-md border border-line bg-surface p-4">
+          <h3 className="font-semibold">Checklist de Validacao</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {leadershipChecklistItems.map((item) => (
+              <label key={item} className="flex items-center gap-2 rounded-md border border-line bg-card px-3 py-2 text-sm">
+                <input
+                  disabled={!editing}
+                  type="checkbox"
+                  checked={current.leadershipChecklist.includes(item)}
+                  onChange={(event) => {
+                    const next = event.target.checked
+                      ? [...current.leadershipChecklist, item]
+                      : current.leadershipChecklist.filter((value) => value !== item);
+                    setDraft({ ...current, leadershipChecklist: next });
+                  }}
+                />
+                {item}
+              </label>
+            ))}
+          </div>
+        </div>
         <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
         <ActionBar>
           <button className="btn" onClick={() => downloadIcs(`1:1 - ${current.name}`, current.firstOneOnOne, current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
@@ -2094,6 +2136,16 @@ function isKeyLeader(name: string) {
   return normalized.includes("keyze") || normalized.includes("juliana");
 }
 
+function normalizeLeadershipChecklist(items: string[]) {
+  const normalized = new Set<string>();
+  items.forEach((item) => {
+    if (item === "Temas Quentes" || item === "Temas Criticos" || item === "Temas Criticos / Temas Quentes") normalized.add("Temas Criticos");
+    else if (item === "Metas Financeiras") normalized.add("Metas");
+    else if (leadershipChecklistItems.includes(item)) normalized.add(item);
+  });
+  return Array.from(normalized);
+}
+
 const strategicQuestions = [
   {
     title: "Visao da Area",
@@ -2126,16 +2178,13 @@ const strategicQuestions = [
 ];
 
 const leadershipChecklistItems = [
-  "Relacao Pessoas x Carteiras",
-  "Workload do Time",
-  "Avaliacoes Individuais",
-  "Posicoes Abertas",
-  "Possiveis Movimentacoes de Estrutura",
+  "Motivacao",
   "Temas Criticos",
-  "Temas Quentes",
+  "Metas",
   "Necessidades de Apoio",
-  "Metas Financeiras",
-  "Oportunidades Financeiras"
+  "Oportunidades Financeiras",
+  "Alinhamento de Conversas com Stakeholders",
+  "Alinhamento de Conversas com Fornecedores"
 ];
 
 function calculateMetrics(data: AppData) {
