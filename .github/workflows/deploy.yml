@@ -6,16 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,16 +26,19 @@ jobs:
           VITE_SUPABASE_URL: https://fokdjnqseqppmrjkimfu.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_C7pVM61DBzPfD0jqHLaCDQ_iR4Og0np
           VITE_FIRST_DAY: "2026-06-22"
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish static site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir ../gh-pages-build
+          cp -R dist/. ../gh-pages-build/
+          touch ../gh-pages-build/.nojekyll
+          cd ../gh-pages-build
+          git init
+          git checkout -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy GitHub Pages"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin gh-pages
