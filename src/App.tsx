@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   BriefcaseBusiness,
+  Building2,
   CalendarPlus,
   CalendarRange,
   Copy,
@@ -35,6 +36,7 @@ import {
   guardiansSeed,
   handoverChecklistSeed,
   initialData,
+  marketBenchmarkSeed,
   methodologyPillarsSeed,
   orgScenarioItemsSeed,
   orgScenariosSeed,
@@ -55,6 +57,7 @@ import type {
   Diagnosis,
   Guardian,
   HandoverItem,
+  MarketBenchmark,
   MethodologyPillar,
   OrgScenario,
   OrgScenarioItem,
@@ -66,7 +69,7 @@ import type {
   UserPreference
 } from "./lib/types";
 
-type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "guardians" | "deliveryGuide" | "stakeholders" | "suppliers" | "diagnosis";
+type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers" | "diagnosis";
 type CollectionKey =
   | "people"
   | "stakeholders"
@@ -76,6 +79,7 @@ type CollectionKey =
   | "handoverChecklist"
   | "coachingSessions"
   | "clientRoutines"
+  | "marketBenchmarks"
   | "guardians"
   | "deliveryGuideItems"
   | "successIndicators"
@@ -101,6 +105,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> 
   { key: "guardians", label: "Guardioes", icon: ShieldAlert },
   { key: "deliveryGuide", label: "Guia de Entregas", icon: Target },
   { key: "stakeholders", label: "Stakeholders", icon: UserSquare2 },
+  { key: "marketBenchmark", label: "Benchmark Mercado", icon: Building2 },
   { key: "suppliers", label: "Fornecedores", icon: BriefcaseBusiness },
   { key: "diagnosis", label: "Diagnostico", icon: ShieldAlert }
 ];
@@ -114,6 +119,7 @@ const tableNames: Record<CollectionKey | "diagnosis" | "userPreferences", string
   handoverChecklist: "handover_checklist",
   coachingSessions: "coaching_sessions",
   clientRoutines: "client_routines",
+  marketBenchmarks: "market_benchmarks",
   guardians: "guardians",
   deliveryGuideItems: "delivery_guide_items",
   successIndicators: "success_indicators",
@@ -151,6 +157,7 @@ const emptyRows = {
   handoverChecklist: handoverChecklistSeed[0],
   coachingSessions: coachingSessionsSeed[0],
   clientRoutines: emptyClientRoutine,
+  marketBenchmarks: marketBenchmarkSeed[0],
   guardians: emptyGuardian,
   deliveryGuideItems: emptyDeliveryGuideItem,
   successIndicators: emptySuccessIndicator,
@@ -239,6 +246,7 @@ const normalizePillar = (row: MethodologyPillar): MethodologyPillar => ({ ...(me
 const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [], section: row.section || "handover" });
 const normalizeCoaching = (row: CoachingSession): CoachingSession => ({ ...coachingSessionsSeed[0], ...row, sessionNumber: Number(row.sessionNumber || 1), actionStatus: row.actionStatus || "Aberta" });
 const normalizeClientRoutine = (row: ClientRoutine): ClientRoutine => ({ ...emptyClientRoutine, ...row, status: row.status || "Ativa", area: row.area || "Outras" });
+const normalizeMarketBenchmark = (row: MarketBenchmark): MarketBenchmark => ({ ...marketBenchmarkSeed[0], ...row, status: row.status || "Nao iniciado" });
 const normalizeGuardian = (row: Guardian): Guardian => ({ ...emptyGuardian, ...row, followUpFrequency: row.followUpFrequency || "Mensal" });
 const normalizeDelivery = (row: DeliveryGuideItem): DeliveryGuideItem => ({ ...emptyDeliveryGuideItem, ...row, milestone: row.milestone || "30 dias", status: row.status || "Nao iniciado", priority: row.priority || "Media" });
 const normalizeIndicator = (row: SuccessIndicator): SuccessIndicator => ({ ...emptySuccessIndicator, ...row, status: row.status || "Nao iniciado" });
@@ -318,7 +326,7 @@ function App() {
     setError("");
     try {
       const withUser = (query: any) => isViewer ? query : query.eq("user_id", userId);
-      const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, coaching, routines, guardians, deliveries, indicators, scenarios, scenarioItems, preferences] = await Promise.all([
+      const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, coaching, routines, marketBenchmarks, guardians, deliveries, indicators, scenarios, scenarioItems, preferences] = await Promise.all([
         withUser(supabase.from(tableNames.people).select("*")).order("name"),
         withUser(supabase.from(tableNames.stakeholders).select("*")).order("name"),
         withUser(supabase.from(tableNames.suppliers).select("*")).order("spend", { ascending: false }),
@@ -328,6 +336,7 @@ function App() {
         withUser(supabase.from(tableNames.handoverChecklist).select("*")).order("item"),
         withUser(supabase.from(tableNames.coachingSessions).select("*")).order("session_number"),
         withUser(supabase.from(tableNames.clientRoutines).select("*")).order("area").order("name"),
+        withUser(supabase.from(tableNames.marketBenchmarks).select("*")).order("company_name"),
         withUser(supabase.from(tableNames.guardians).select("*")).order("process_name"),
         withUser(supabase.from(tableNames.deliveryGuideItems).select("*")).order("planned_date", { ascending: true }),
         withUser(supabase.from(tableNames.successIndicators).select("*")).order("indicator"),
@@ -335,20 +344,21 @@ function App() {
         withUser(supabase.from(tableNames.orgScenarioItems).select("*")).order("person_name"),
         withUser(supabase.from(tableNames.userPreferences).select("*")).maybeSingle()
       ]);
-      const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, guardians.error, deliveries.error, indicators.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
+      const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, marketBenchmarks.error, guardians.error, deliveries.error, indicators.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
       if (failures.length) throw failures[0];
       if (!people.data?.length || !pillars.data?.length || !handover.data?.length || !scenarios.data?.length) {
         await ensureInitialData(userId);
         return loadCloudData(userId);
       }
-      if (!isViewer && needsSeedReconcile(people.data, stakeholders.data, suppliers.data, categories.data, handover.data, coaching.data)) {
+      if (!isViewer && needsSeedReconcile(people.data, stakeholders.data, suppliers.data, categories.data, handover.data, coaching.data, marketBenchmarks.data)) {
         await reconcileSeedData(userId, {
           people: people.data?.map((row: Record<string, unknown>) => normalizePerson(fromSnake<Person>(row))) ?? [],
           stakeholders: stakeholders.data?.map((row: Record<string, unknown>) => normalizeStakeholder(fromSnake<Stakeholder>(row))) ?? [],
           suppliers: suppliers.data?.map((row: Record<string, unknown>) => normalizeSupplier(fromSnake<Supplier>(row))) ?? [],
           categories: categories.data?.map((row: Record<string, unknown>) => fromSnake<Category>(row)) ?? [],
           handover: handover.data?.map((row: Record<string, unknown>) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? [],
-          coaching: coaching.data?.map((row: Record<string, unknown>) => normalizeCoaching(fromSnake<CoachingSession>(row))) ?? []
+          coaching: coaching.data?.map((row: Record<string, unknown>) => normalizeCoaching(fromSnake<CoachingSession>(row))) ?? [],
+          marketBenchmarks: marketBenchmarks.data?.map((row: Record<string, unknown>) => normalizeMarketBenchmark(fromSnake<MarketBenchmark>(row))) ?? []
         });
         return loadCloudData(userId);
       }
@@ -366,6 +376,7 @@ function App() {
         handoverChecklist: handover.data?.map((row: Record<string, unknown>) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
         coachingSessions: coaching.data?.map((row: Record<string, unknown>) => normalizeCoaching(fromSnake<CoachingSession>(row))) ?? initialData.coachingSessions,
         clientRoutines: routines.data?.map((row: Record<string, unknown>) => normalizeClientRoutine(fromSnake<ClientRoutine>(row))) ?? [],
+        marketBenchmarks: marketBenchmarks.data?.map((row: Record<string, unknown>) => normalizeMarketBenchmark(fromSnake<MarketBenchmark>(row))) ?? initialData.marketBenchmarks,
         guardians: guardians.data?.map((row: Record<string, unknown>) => normalizeGuardian(fromSnake<Guardian>(row))) ?? initialData.guardians,
         deliveryGuideItems: deliveries.data?.map((row: Record<string, unknown>) => normalizeDelivery(fromSnake<DeliveryGuideItem>(row))) ?? [],
         successIndicators: indicators.data?.map((row: Record<string, unknown>) => normalizeIndicator(fromSnake<SuccessIndicator>(row))) ?? initialData.successIndicators,
@@ -414,6 +425,7 @@ function App() {
       insertMany("methodologyPillars", methodologyPillarsSeed),
       insertMany("handoverChecklist", initialData.handoverChecklist),
       insertMany("coachingSessions", coachingSessionsSeed),
+      insertMany("marketBenchmarks", marketBenchmarkSeed),
       insertMany("guardians", guardiansSeed),
       insertMany("successIndicators", initialData.successIndicators),
       insertMany("orgScenarios", orgScenariosSeed),
@@ -423,18 +435,19 @@ function App() {
     ]);
   }
 
-  function needsSeedReconcile(people: unknown[] | null, stakeholders: unknown[] | null, suppliers: unknown[] | null, categories: unknown[] | null, handover: unknown[] | null, coaching: unknown[] | null) {
+  function needsSeedReconcile(people: unknown[] | null, stakeholders: unknown[] | null, suppliers: unknown[] | null, categories: unknown[] | null, handover: unknown[] | null, coaching: unknown[] | null, marketBenchmarks: unknown[] | null) {
     return (people?.length || 0) < peopleSeed.length
       || (stakeholders?.length || 0) < stakeholdersSeed.length
       || (suppliers?.length || 0) < 20
       || (categories?.length || 0) < categoriesInitial.length
       || (handover?.length || 0) < initialData.handoverChecklist.length
-      || (coaching?.length || 0) < coachingSessionsSeed.length;
+      || (coaching?.length || 0) < coachingSessionsSeed.length
+      || (marketBenchmarks?.length || 0) < marketBenchmarkSeed.length;
   }
 
   async function reconcileSeedData(
     userId: string,
-    current: { people: Person[]; stakeholders: Stakeholder[]; suppliers: Supplier[]; categories: Category[]; handover: HandoverItem[]; coaching: CoachingSession[] }
+    current: { people: Person[]; stakeholders: Stakeholder[]; suppliers: Supplier[]; categories: Category[]; handover: HandoverItem[]; coaching: CoachingSession[]; marketBenchmarks: MarketBenchmark[] }
   ) {
     if (!supabase) return;
     const client = supabase;
@@ -453,6 +466,9 @@ function App() {
     const existingSessions = new Set(current.coaching.map((row) => row.sessionNumber));
     const missingSessions = coachingSessionsSeed.filter((row) => !existingSessions.has(row.sessionNumber));
     if (missingSessions.length) await client.from(tableNames.coachingSessions).insert(missingSessions.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
+    const existingBenchmarks = new Set(current.marketBenchmarks.map((row) => row.companyName.toLowerCase()));
+    const missingBenchmarks = marketBenchmarkSeed.filter((row) => !existingBenchmarks.has(row.companyName.toLowerCase()));
+    if (missingBenchmarks.length) await client.from(tableNames.marketBenchmarks).insert(missingBenchmarks.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
   }
 
   async function upsertRow<T extends { id: string }>(collection: CollectionKey, row: T) {
@@ -460,7 +476,7 @@ function App() {
       setError("Usuario visualizador nao pode salvar alteracoes.");
       return;
     }
-    const stamped = ["methodologyPillars", "handoverChecklist", "coachingSessions", "clientRoutines", "guardians", "deliveryGuideItems", "successIndicators"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
+    const stamped = ["methodologyPillars", "handoverChecklist", "coachingSessions", "clientRoutines", "marketBenchmarks", "guardians", "deliveryGuideItems", "successIndicators"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
     setData((current) => {
       const nextRows = (current[collection] as Array<{ id: string }>).map((item) => (item.id === row.id ? stamped : item));
       return { ...current, [collection]: nextRows } as AppData;
@@ -660,6 +676,15 @@ function App() {
             />
           )}
           {activeTab === "stakeholders" && <StakeholderPanel rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado" })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
+          {activeTab === "marketBenchmark" && (
+            <MarketBenchmarkPanel
+              canEdit={canEdit}
+              rows={data.marketBenchmarks}
+              addBenchmark={() => addRow("marketBenchmarks", { ...marketBenchmarkSeed[0], id: crypto.randomUUID(), companyName: "Nova empresa" })}
+              deleteBenchmark={(id) => deleteRow("marketBenchmarks", id)}
+              onChange={(row) => upsertRow("marketBenchmarks", row)}
+            />
+          )}
           {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} onChange={(row) => upsertRow("suppliers", row)} />}
           {activeTab === "diagnosis" && <DiagnosisPanel diagnosis={data.diagnosis} onChange={updateDiagnosis} />}
         </main>
@@ -729,10 +754,11 @@ function Dashboard({ dayState, data, metrics }: {
       <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Metric title="Dia atual" value={`${dayState.elapsed}/100`} note={dayState.phase} />
         <Metric title="Progresso do tempo" value={percent(dayState.timeProgress)} note={`${formatDate(dayState.startDate)} a ${formatDate(dayState.endDate)}`} />
-        <Metric title="Progresso geral" value={percent(metrics.overall)} note="6 frentes" />
+        <Metric title="Progresso geral" value={percent(metrics.overall)} note="7 frentes" />
         <Metric title="Pessoas" value={`${metrics.peopleDone}/${data.people.length}`} note="pessoas conversadas" />
         <Metric title="Handover Thais" value={`${metrics.handoverDone}/${data.handoverChecklist.length}`} note="pontos concluidos" />
         <Metric title="Sessoes de Coaching" value={`${metrics.coachingDone}/6`} note="sessoes realizadas" />
+        <Metric title="Benchmark Mercado" value={`${metrics.benchmarkDone}/${metrics.benchmarkGoal}`} note="empresas conversadas" />
         <Metric title="Entregas" value={`${metrics.deliveryDone}/${data.deliveryGuideItems.length}`} note="guia dos marcos" />
         <Metric title="Guardioes" value={`${metrics.guardiansAssigned}/${data.guardians.length}`} note="processos com responsavel" />
         <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${data.stakeholders.length}`} note="conversados" />
@@ -774,6 +800,7 @@ function Dashboard({ dayState, data, metrics }: {
           <ProgressRow label={`Pessoas do time (${metrics.peopleDone}/${data.people.length})`} value={metrics.peopleProgress} />
           <ProgressRow label={`Handover Thais (${metrics.handoverDone}/${data.handoverChecklist.length})`} value={metrics.handoverProgress} />
           <ProgressRow label={`Coaching (${metrics.coachingDone}/6)`} value={metrics.coachingProgress} />
+          <ProgressRow label={`Benchmark Mercado (${metrics.benchmarkDone}/${metrics.benchmarkGoal})`} value={metrics.benchmarkProgress} />
           <ProgressRow label={`Stakeholders (${metrics.stakeholdersDone}/${data.stakeholders.length})`} value={metrics.stakeholderProgress} />
           <ProgressRow label={`Fornecedores (${metrics.suppliersDone}/${metrics.supplierGoal})`} value={metrics.supplierProgress} />
           <ProgressRow label={`Pilares (${metrics.pillarsDone}/${data.methodologyPillars.length})`} value={metrics.pillarProgress} />
@@ -1764,6 +1791,178 @@ function OrgPanel({
   );
 }
 
+const marketBenchmarkDimensions: Array<{ title: string; compare: string; questions: string; field: keyof MarketBenchmark }> = [
+  {
+    title: "1. Escopo da area",
+    compare: "Quais categorias pertencem a gerencia",
+    questions: "Quais categorias ficam com Servicos Corporativos? O que fica fora? Existe divisao por spend ou especializacao?",
+    field: "scopeArea"
+  },
+  {
+    title: "2. Spend sob gestao",
+    compare: "Volume financeiro",
+    questions: "Quanto e o spend anual? Quantos fornecedores? Quantas requisicoes? Quantos contratos?",
+    field: "managedSpend"
+  },
+  {
+    title: "3. Estrutura organizacional",
+    compare: "Como o time e dividido",
+    questions: "Quantos gestores? Quantos compradores? Existe divisao por categoria, cliente interno ou especialidade?",
+    field: "orgStructure"
+  },
+  {
+    title: "4. Classificacao das categorias",
+    compare: "Modelo de agrupamento",
+    questions: "Como segmentam as categorias? Facilities, RH, TI, Marketing, Viagens, Juridico etc.? Existe matriz de criticidade?",
+    field: "categoryClassification"
+  },
+  {
+    title: "5. Papeis e responsabilidades",
+    compare: "Quem faz o que",
+    questions: "Existe separacao entre Strategic Sourcing, Category Management, SRM, Operacao, Analytics, Governanca e Administracao Contratual?",
+    field: "rolesResponsibilities"
+  },
+  {
+    title: "6. Gestao operacional dos contratos",
+    compare: "Como sustentam o pos-assinatura",
+    questions: "Quem acompanha vigencia, saldos, aditivos, reajustes, consumo, renovacoes, SLAs e obrigacoes contratuais? Existe equipe dedicada? O comprador continua responsavel apos a contratacao ou existe handoff?",
+    field: "contractManagement"
+  },
+  {
+    title: "7. Modelo de atendimento",
+    compare: "Relacao com o negocio",
+    questions: "Comprador dedicado? Business Partner? Pool compartilhado? Squads?",
+    field: "serviceModel"
+  },
+  {
+    title: "8. Governanca",
+    compare: "Foruns e decisoes",
+    questions: "Quais rituais existem? Comites? Aprovacao de categorias? Revisao de pipeline? Cadencia com diretoria?",
+    field: "governance"
+  },
+  {
+    title: "9. Indicadores KPIs",
+    compare: "Como medem performance",
+    questions: "Savings, Cost Avoidance, SLA, Compliance, Spend under Management, produtividade, NPS, contratos vencendo, execucao contratual etc.",
+    field: "kpis"
+  },
+  {
+    title: "10. Digital e Analytics",
+    compare: "Ferramentas e tecnologia",
+    questions: "ERP? e-Procurement? CLM? IA? Dashboards? Automatizacoes? Gestao de contratos?",
+    field: "digitalAnalytics"
+  },
+  {
+    title: "11. Agenda estrategica",
+    compare: "Onde investem energia",
+    questions: "Quais sao as prioridades da area hoje? IA? ESG? Supplier Innovation? Category Strategy? SRM?",
+    field: "strategicAgenda"
+  }
+];
+
+function MarketBenchmarkPanel({
+  rows,
+  addBenchmark,
+  deleteBenchmark,
+  onChange,
+  canEdit
+}: {
+  rows: MarketBenchmark[];
+  addBenchmark: () => Promise<string>;
+  deleteBenchmark: (id: string) => void;
+  onChange: (row: MarketBenchmark) => void;
+  canEdit: boolean;
+}) {
+  const sourceRows = rows.length ? rows : marketBenchmarkSeed;
+  const [selected, setSelected] = useState(sourceRows[0]?.id || "");
+  const row = sourceRows.find((item) => item.id === selected) || sourceRows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
+  if (!row) return null;
+  const current = draft || row;
+  const completed = sourceRows.filter(isBenchmarkDone);
+  const save = () => {
+    onChange(current);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!window.confirm("Tem certeza que deseja limpar tudo deste benchmark? Nome da empresa sera preservado.")) return;
+    setDraft({
+      ...current,
+      contactName: "",
+      contactRole: "",
+      contactEmail: "",
+      contactPhone: "",
+      conversationDate: "",
+      status: "Nao iniciado",
+      scopeArea: "",
+      managedSpend: "",
+      orgStructure: "",
+      categoryClassification: "",
+      rolesResponsibilities: "",
+      contractManagement: "",
+      serviceModel: "",
+      governance: "",
+      kpis: "",
+      digitalAnalytics: "",
+      strategicAgenda: "",
+      learnings: "",
+      nextSteps: ""
+    });
+    setSaved(false);
+  };
+  const update = (field: keyof MarketBenchmark, value: string) => setDraft({ ...current, [field]: value });
+  return (
+    <Panel title="Benchmark Mercado" action={canEdit && <button className="btn" onClick={addBenchmark}><Plus size={16} /> Nova empresa</button>}>
+      <div className="grid gap-3 md:grid-cols-3">
+        <Metric title="Empresas conversadas" value={`${completed.length}/5`} note="meta inicial" />
+        <Metric title="Empresas mapeadas" value={String(sourceRows.length)} note="fichas criadas" />
+        <Metric title="Pendentes" value={String(Math.max(0, 5 - completed.length))} note="a conversar" />
+      </div>
+      <div className="mt-4">
+        <CardLayout rows={sourceRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.companyName} subtitle={item.contactName || "Contato a preencher"} meta={isBenchmarkDone(item) ? "Concluido" : item.status} />}>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Field disabled={!editing} label="Nome da empresa" value={current.companyName} onChange={(value) => update("companyName", value)} />
+            <Select disabled={!editing} label="Status" value={current.status} onChange={(value) => update("status", value)} options={["Nao iniciado", "Agendado", "Em andamento", "Concluido"]} />
+            <Field disabled={!editing} label="Nome do contato" value={current.contactName} onChange={(value) => update("contactName", value)} />
+            <Field disabled={!editing} label="Cargo do contato" value={current.contactRole} onChange={(value) => update("contactRole", value)} />
+            <Field disabled={!editing} label="E-mail" type="email" value={current.contactEmail} onChange={(value) => update("contactEmail", value)} />
+            <Field disabled={!editing} label="Telefone" value={current.contactPhone} onChange={(value) => update("contactPhone", value)} />
+            <Field disabled={!editing} label="Data da conversa" type="date" value={current.conversationDate} onChange={(value) => update("conversationDate", value)} />
+          </div>
+          <div className="mt-4 grid gap-3">
+            {marketBenchmarkDimensions.map((dimension) => (
+              <div key={dimension.field} className="rounded-md border border-line bg-card p-3">
+                <div className="mb-2">
+                  <h3 className="font-semibold">{dimension.title}</h3>
+                  <p className="text-sm text-muted">Comparar: {dimension.compare}</p>
+                  <p className="mt-1 text-sm text-muted">{dimension.questions}</p>
+                </div>
+                <Field disabled={!editing} area value={String(current[dimension.field] || "")} onChange={(value) => update(dimension.field, value)} />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <Field disabled={!editing} area label="Aprendizados principais" value={current.learnings} onChange={(value) => update("learnings", value)} />
+            <Field disabled={!editing} area label="Proximos passos" value={current.nextSteps} onChange={(value) => update("nextSteps", value)} />
+          </div>
+          <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={current.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); setSaved(false); }} onSave={save} onClear={clear} />
+          {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este benchmark permanentemente?")) deleteBenchmark(row.id); }}><Trash2 size={16} /> Excluir benchmark</button></ActionBar>}
+        </CardLayout>
+      </div>
+    </Panel>
+  );
+}
+
 function StakeholderPanel({ rows, addRow, deleteRow, onChange }: { rows: Stakeholder[]; addRow: () => void; deleteRow: (id: string) => void; onChange: (row: Stakeholder) => void }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || rows[0];
@@ -2221,12 +2420,15 @@ function calculateMetrics(data: AppData) {
   const scopedSuppliers = data.suppliers.filter(isSupplierScoped);
   const supplierGoal = Math.max(1, scopedSuppliers.length || Math.min(20, data.suppliers.length));
   const suppliersDone = (scopedSuppliers.length ? scopedSuppliers : data.suppliers.slice(0, supplierGoal)).filter(isSupplierDone).length;
+  const benchmarkGoal = Math.max(5, data.marketBenchmarks.length || 5);
+  const benchmarkDone = data.marketBenchmarks.filter(isBenchmarkDone).length;
   const pillarsDone = data.methodologyPillars.filter((item) => item.status === "Concluido" || (item.decision && item.evidence)).length;
   const peopleProgress = data.people.length ? peopleDone / data.people.length : 0;
   const handoverProgress = data.handoverChecklist.length ? handoverDone / data.handoverChecklist.length : 0;
   const coachingProgress = coachingDone / 6;
   const stakeholderProgress = data.stakeholders.length ? stakeholdersDone / data.stakeholders.length : 0;
   const supplierProgress = suppliersDone / supplierGoal;
+  const benchmarkProgress = benchmarkDone / benchmarkGoal;
   const pillarProgress = data.methodologyPillars.length ? pillarsDone / data.methodologyPillars.length : 0;
   const assignedCategories = new Set(data.people.flatMap((person) => person.categoryIds || []));
   const unassignedCategoryNames = data.categories.filter((category) => !assignedCategories.has(category.id)).map((category) => category.name);
@@ -2239,14 +2441,17 @@ function calculateMetrics(data: AppData) {
     stakeholdersDone,
     suppliersDone,
     supplierGoal,
+    benchmarkDone,
+    benchmarkGoal,
     pillarsDone,
     peopleProgress,
     handoverProgress,
     coachingProgress,
     stakeholderProgress,
     supplierProgress,
+    benchmarkProgress,
     pillarProgress,
-    overall: (peopleProgress + handoverProgress + coachingProgress + stakeholderProgress + supplierProgress + pillarProgress) / 6,
+    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + stakeholderProgress + supplierProgress + pillarProgress) / 7,
     supplierSpend: data.suppliers.reduce((sum, item) => sum + Number(item.spend || 0), 0),
     topSupplierSpend: data.suppliers.slice(0, 20).reduce((sum, item) => sum + Number(item.spend || 0), 0),
     categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0),
@@ -2270,6 +2475,10 @@ function isSupplierScoped(item: Supplier) {
 
 function isSupplierDone(item: Supplier) {
   return Boolean(item.conversationDate || item.firstInteraction);
+}
+
+function isBenchmarkDone(item: MarketBenchmark) {
+  return item.status === "Concluido" || Boolean(item.conversationDate);
 }
 
 function labelsFor(categories: Category[], ids: string[]) {

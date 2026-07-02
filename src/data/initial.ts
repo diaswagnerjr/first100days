@@ -6,6 +6,7 @@ import type {
   DeliveryGuideItem,
   Guardian,
   HandoverItem,
+  MarketBenchmark,
   MethodologyPillar,
   OrgScenario,
   OrgScenarioItem,
@@ -283,6 +284,31 @@ export const emptyClientRoutine: ClientRoutine = {
   updatedAt: ""
 };
 
+export const marketBenchmarkSeed: MarketBenchmark[] = Array.from({ length: 5 }, (_, index) => ({
+  id: id("market-benchmark", index),
+  companyName: `Empresa ${index + 1}`,
+  contactName: "",
+  contactRole: "",
+  contactEmail: "",
+  contactPhone: "",
+  conversationDate: "",
+  status: "Nao iniciado",
+  scopeArea: "",
+  managedSpend: "",
+  orgStructure: "",
+  categoryClassification: "",
+  rolesResponsibilities: "",
+  contractManagement: "",
+  serviceModel: "",
+  governance: "",
+  kpis: "",
+  digitalAnalytics: "",
+  strategicAgenda: "",
+  learnings: "",
+  nextSteps: "",
+  updatedAt: ""
+}));
+
 export const guardiansSeed: Guardian[] = [
   {
     id: "guardian-001",
@@ -409,6 +435,7 @@ export const initialData: AppData = {
   handoverChecklist: [...handoverChecklistSeed, ...administrativeHandoverSeed],
   coachingSessions: coachingSessionsSeed,
   clientRoutines: [],
+  marketBenchmarks: marketBenchmarkSeed,
   guardians: guardiansSeed,
   deliveryGuideItems: deliveryGuideSeed,
   successIndicators: successIndicatorsSeed,

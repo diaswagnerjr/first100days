@@ -16,6 +16,7 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Diagnostico inicial
 - Pessoas
 - Stakeholders
+- Benchmark Mercado para conversas com 5 empresas, contatos e dimensoes comparativas
 - Fornecedores estrategicos
 - Categorias como base de spend e referencia para Pessoas/Estrutura
 - Pilares metodologicos dos 100 dias
@@ -82,8 +83,9 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 7. Execute o SQL incremental em `supabase/migrations/20260621190000_coaching_client_routines_and_timeline.sql`.
 8. Execute o SQL incremental em `supabase/migrations/20260623120000_guardians_delivery_handover_people.sql`.
 9. Execute o SQL incremental em `supabase/migrations/20260629120000_people_carteiras_sommos_capabilities.sql`.
-10. Confira se Auth esta habilitado com e-mail/senha.
-11. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
+10. Execute o SQL incremental em `supabase/migrations/20260701120000_market_benchmark.sql`.
+11. Confira se Auth esta habilitado com e-mail/senha.
+12. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -93,6 +95,7 @@ Tabelas principais:
 - `methodology_pillars`, `pillar_decisions`
 - `handover_checklist`
 - `coaching_sessions`, `client_routines`, `guardians`
+- `market_benchmarks`
 - `delivery_guide_items`, `success_indicators`
 - `org_scenarios`, `org_scenario_items`
 - `meetings`, `reminders`
@@ -103,7 +106,7 @@ Observacao de seguranca: use apenas `VITE_SUPABASE_ANON_KEY`/publishable key no 
 Notas funcionais:
 
 - A aba `Categorias` nao aparece no menu principal, mas a tabela `categories` continua sendo usada no dashboard, em Pessoas e na simulacao de estrutura.
-- O progresso geral considera Pessoas, Handover Thais, Stakeholders, Fornecedores e Pilares dos 100 dias.
+- O progresso geral considera Pessoas, Handover Thais, Coaching, Benchmark Mercado, Stakeholders, Fornecedores e Pilares dos 100 dias.
 - O modo claro/escuro usa upsert por `user_id` em `user_preferences`, evitando duplicidade de preferencia.
 - Anexos do handover sao salvos em `handover_checklist.attachments` como JSON para permitir download posterior.
 - Se fornecedores ou categorias estiverem vazios para um usuario existente, o app repopula essas tabelas a partir das planilhas no proximo carregamento.
@@ -112,6 +115,7 @@ Notas funcionais:
 - A migration `20260623120000_guardians_delivery_handover_people.sql` adiciona somente estruturas incrementais: novos campos em Pessoas, secao do handover, Guardioes, Guia de Entregas e Indicadores de Sucesso. Ela nao apaga, sobrescreve ou reinicializa dados cadastrados.
 - A migration `20260629120000_people_carteiras_sommos_capabilities.sql` adiciona campos incrementais em Pessoas, carrega SOMMOS e une as categorias da planilha de carteiras com qualquer atribuicao ja existente. Ela nao apaga anotacoes antigas.
 - A guia `Estrutura` foi removida da navegacao, mas as tabelas antigas `org_scenarios` e `org_scenario_items` foram preservadas para compatibilidade e historico.
+- A migration `20260701120000_market_benchmark.sql` cria a tabela `market_benchmarks`, com RLS, seed incremental de 5 empresas e nenhum overwrite dos dados existentes.
 
 ## GitHub Pages
 

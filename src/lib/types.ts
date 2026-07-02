@@ -161,6 +161,33 @@ export type ClientRoutine = {
   updatedAt: string;
 };
 
+export type MarketBenchmarkStatus = "Nao iniciado" | "Agendado" | "Em andamento" | "Concluido";
+
+export type MarketBenchmark = {
+  id: string;
+  companyName: string;
+  contactName: string;
+  contactRole: string;
+  contactEmail: string;
+  contactPhone: string;
+  conversationDate: string;
+  status: MarketBenchmarkStatus;
+  scopeArea: string;
+  managedSpend: string;
+  orgStructure: string;
+  categoryClassification: string;
+  rolesResponsibilities: string;
+  contractManagement: string;
+  serviceModel: string;
+  governance: string;
+  kpis: string;
+  digitalAnalytics: string;
+  strategicAgenda: string;
+  learnings: string;
+  nextSteps: string;
+  updatedAt: string;
+};
+
 export type Guardian = {
   id: string;
   processName: string;
@@ -250,6 +277,7 @@ export type AppData = {
   handoverChecklist: HandoverItem[];
   coachingSessions: CoachingSession[];
   clientRoutines: ClientRoutine[];
+  marketBenchmarks: MarketBenchmark[];
   guardians: Guardian[];
   deliveryGuideItems: DeliveryGuideItem[];
   successIndicators: SuccessIndicator[];
