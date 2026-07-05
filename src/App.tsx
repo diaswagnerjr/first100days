@@ -346,7 +346,7 @@ function App() {
       ]);
       const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, marketBenchmarks.error, guardians.error, deliveries.error, indicators.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
       if (failures.length) throw failures[0];
-      if (!people.data?.length || !pillars.data?.length || !handover.data?.length || !scenarios.data?.length) {
+      if (!pillars.data?.length || !handover.data?.length || !scenarios.data?.length) {
         await ensureInitialData(userId);
         return loadCloudData(userId);
       }
@@ -436,8 +436,7 @@ function App() {
   }
 
   function needsSeedReconcile(people: unknown[] | null, stakeholders: unknown[] | null, suppliers: unknown[] | null, categories: unknown[] | null, handover: unknown[] | null, coaching: unknown[] | null, marketBenchmarks: unknown[] | null) {
-    return (people?.length || 0) < peopleSeed.length
-      || (stakeholders?.length || 0) < stakeholdersSeed.length
+    return (stakeholders?.length || 0) < stakeholdersSeed.length
       || (suppliers?.length || 0) < 20
       || (categories?.length || 0) < categoriesInitial.length
       || (handover?.length || 0) < initialData.handoverChecklist.length
@@ -456,7 +455,6 @@ function App() {
       const missing = seedRows.filter((row) => !existingNames.has(row.name.toLowerCase()));
       if (missing.length) await client.from(tableNames[collection]).insert(missing.map((row) => toSnake(row as unknown as Record<string, unknown>, userId)));
     };
-    await insertMissing("people", peopleSeed, current.people);
     await insertMissing("stakeholders", stakeholdersSeed, current.stakeholders);
     await insertMissing("suppliers", suppliersInitial, current.suppliers);
     await insertMissing("categories", categoriesInitial, current.categories);
@@ -631,7 +629,7 @@ function App() {
           {error && <div className="mb-4 rounded-md border border-coral/40 bg-coral/10 p-3 text-sm">{error}</div>}
           {activeTab === "dashboard" && <Dashboard dayState={dayState} data={data} metrics={metrics} />}
           {activeTab === "pillars" && <PillarsPanel canEdit={canEdit} rows={data.methodologyPillars} onChange={(row) => upsertRow("methodologyPillars", row)} />}
-          {activeTab === "people" && <PeoplePanel canEdit={canEdit} rows={data.people} categories={data.categories} onChange={(row) => upsertRow("people", row)} />}
+          {activeTab === "people" && <PeoplePanel canEdit={canEdit} rows={data.people} categories={data.categories} deletePerson={(id) => deleteRow("people", id)} onChange={(row) => upsertRow("people", row)} />}
           {activeTab === "coaching" && <CoachingPanel canEdit={canEdit} rows={data.coachingSessions} onChange={(row) => upsertRow("coachingSessions", row)} />}
           {activeTab === "handover" && (
             <HandoverPanel
@@ -889,7 +887,7 @@ function PillarsPanel({ rows, onChange, canEdit }: { rows: MethodologyPillar[]; 
   );
 }
 
-function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; categories: Category[]; onChange: (row: Person) => void; canEdit: boolean }) {
+function PeoplePanel({ rows, categories, deletePerson, onChange, canEdit }: { rows: Person[]; categories: Category[]; deletePerson: (id: string) => void; onChange: (row: Person) => void; canEdit: boolean }) {
   const sortedRows = [...rows].sort((a, b) => peopleSortRank(a) - peopleSortRank(b) || a.name.localeCompare(b.name));
   const [selected, setSelected] = useState(sortedRows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || sortedRows[0];
@@ -954,6 +952,12 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
       futureLeadershipDecision: ""
     });
     setSaved(false);
+  };
+  const removePerson = () => {
+    if (!window.confirm(`Excluir ${row.name} permanentemente? Esta acao atualiza o dashboard e remove o registro do Supabase.`)) return;
+    const next = sortedRows.find((person) => person.id !== row.id);
+    setSelected(next?.id || "");
+    deletePerson(row.id);
   };
   return (
     <Panel title="Pessoas do time">
@@ -1023,6 +1027,7 @@ function PeoplePanel({ rows, categories, onChange, canEdit }: { rows: Person[]; 
         <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
         <ActionBar>
           <button className="btn" onClick={() => downloadIcs(`1:1 - ${current.name}`, current.firstOneOnOne, current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
+          {canEdit && <button className="btn" onClick={removePerson}><Trash2 size={16} /> Excluir pessoa</button>}
         </ActionBar>
       </CardLayout>
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.85fr]">
