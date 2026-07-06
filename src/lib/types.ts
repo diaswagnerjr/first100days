@@ -188,6 +188,19 @@ export type MarketBenchmark = {
   updatedAt: string;
 };
 
+export type CriticalProcess = {
+  id: string;
+  name: string;
+  categoryIds: string[];
+  handoverDate: string;
+  description: string;
+  scrumActions: string;
+  notes: string;
+  scrumActionsDone: boolean;
+  showOnDashboard: boolean;
+  updatedAt: string;
+};
+
 export type Guardian = {
   id: string;
   processName: string;
@@ -278,6 +291,7 @@ export type AppData = {
   coachingSessions: CoachingSession[];
   clientRoutines: ClientRoutine[];
   marketBenchmarks: MarketBenchmark[];
+  criticalProcesses: CriticalProcess[];
   guardians: Guardian[];
   deliveryGuideItems: DeliveryGuideItem[];
   successIndicators: SuccessIndicator[];

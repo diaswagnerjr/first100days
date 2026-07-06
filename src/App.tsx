@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarPlus,
   CalendarRange,
+  ClipboardCheck,
   Copy,
   Edit3,
   Handshake,
@@ -29,6 +30,8 @@ import type { Session } from "@supabase/supabase-js";
 import {
   categoriesInitial,
   coachingSessionsSeed,
+  criticalProcessesSeed,
+  emptyCriticalProcess,
   emptyDeliveryGuideItem,
   emptyClientRoutine,
   emptyGuardian,
@@ -53,6 +56,7 @@ import type {
   Category,
   ClientRoutine,
   CoachingSession,
+  CriticalProcess,
   DeliveryGuideItem,
   Diagnosis,
   Guardian,
@@ -69,7 +73,7 @@ import type {
   UserPreference
 } from "./lib/types";
 
-type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers" | "diagnosis";
+type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "criticalProcesses" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers" | "diagnosis";
 type CollectionKey =
   | "people"
   | "stakeholders"
@@ -79,6 +83,7 @@ type CollectionKey =
   | "handoverChecklist"
   | "coachingSessions"
   | "clientRoutines"
+  | "criticalProcesses"
   | "marketBenchmarks"
   | "guardians"
   | "deliveryGuideItems"
@@ -102,6 +107,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> 
   { key: "coaching", label: "Coaching", icon: NotebookPen },
   { key: "handover", label: "Handover Thais", icon: Handshake },
   { key: "clientRoutines", label: "Rotinas da Area", icon: Waypoints },
+  { key: "criticalProcesses", label: "Processos Criticos", icon: ClipboardCheck },
   { key: "guardians", label: "Guardioes", icon: ShieldAlert },
   { key: "deliveryGuide", label: "Guia de Entregas", icon: Target },
   { key: "stakeholders", label: "Stakeholders", icon: UserSquare2 },
@@ -119,6 +125,7 @@ const tableNames: Record<CollectionKey | "diagnosis" | "userPreferences", string
   handoverChecklist: "handover_checklist",
   coachingSessions: "coaching_sessions",
   clientRoutines: "client_routines",
+  criticalProcesses: "critical_processes",
   marketBenchmarks: "market_benchmarks",
   guardians: "guardians",
   deliveryGuideItems: "delivery_guide_items",
@@ -142,6 +149,7 @@ const dateFields = new Set([
   "session_date",
   "planned_date",
   "completed_date",
+  "handover_date",
   "target_date",
   "last_accessed_at",
   "previous_accessed_at"
@@ -157,6 +165,7 @@ const emptyRows = {
   handoverChecklist: handoverChecklistSeed[0],
   coachingSessions: coachingSessionsSeed[0],
   clientRoutines: emptyClientRoutine,
+  criticalProcesses: emptyCriticalProcess,
   marketBenchmarks: marketBenchmarkSeed[0],
   guardians: emptyGuardian,
   deliveryGuideItems: emptyDeliveryGuideItem,
@@ -247,6 +256,7 @@ const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChe
 const normalizeCoaching = (row: CoachingSession): CoachingSession => ({ ...coachingSessionsSeed[0], ...row, sessionNumber: Number(row.sessionNumber || 1), actionStatus: row.actionStatus || "Aberta" });
 const normalizeClientRoutine = (row: ClientRoutine): ClientRoutine => ({ ...emptyClientRoutine, ...row, status: row.status || "Ativa", area: row.area || "Outras" });
 const normalizeMarketBenchmark = (row: MarketBenchmark): MarketBenchmark => ({ ...marketBenchmarkSeed[0], ...row, status: row.status || "Nao iniciado" });
+const normalizeCriticalProcess = (row: CriticalProcess): CriticalProcess => ({ ...emptyCriticalProcess, ...row, categoryIds: asArray(row.categoryIds), scrumActionsDone: Boolean(row.scrumActionsDone), showOnDashboard: row.showOnDashboard !== false });
 const normalizeGuardian = (row: Guardian): Guardian => ({ ...emptyGuardian, ...row, followUpFrequency: row.followUpFrequency || "Mensal" });
 const normalizeDelivery = (row: DeliveryGuideItem): DeliveryGuideItem => ({ ...emptyDeliveryGuideItem, ...row, milestone: row.milestone || "30 dias", status: row.status || "Nao iniciado", priority: row.priority || "Media" });
 const normalizeIndicator = (row: SuccessIndicator): SuccessIndicator => ({ ...emptySuccessIndicator, ...row, status: row.status || "Nao iniciado" });
@@ -326,7 +336,7 @@ function App() {
     setError("");
     try {
       const withUser = (query: any) => isViewer ? query : query.eq("user_id", userId);
-      const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, coaching, routines, marketBenchmarks, guardians, deliveries, indicators, scenarios, scenarioItems, preferences] = await Promise.all([
+      const [people, stakeholders, suppliers, categories, diagnosis, pillars, handover, coaching, routines, criticalProcesses, marketBenchmarks, guardians, deliveries, indicators, scenarios, scenarioItems, preferences] = await Promise.all([
         withUser(supabase.from(tableNames.people).select("*")).order("name"),
         withUser(supabase.from(tableNames.stakeholders).select("*")).order("name"),
         withUser(supabase.from(tableNames.suppliers).select("*")).order("spend", { ascending: false }),
@@ -336,6 +346,7 @@ function App() {
         withUser(supabase.from(tableNames.handoverChecklist).select("*")).order("item"),
         withUser(supabase.from(tableNames.coachingSessions).select("*")).order("session_number"),
         withUser(supabase.from(tableNames.clientRoutines).select("*")).order("area").order("name"),
+        withUser(supabase.from(tableNames.criticalProcesses).select("*")).order("name"),
         withUser(supabase.from(tableNames.marketBenchmarks).select("*")).order("company_name"),
         withUser(supabase.from(tableNames.guardians).select("*")).order("process_name"),
         withUser(supabase.from(tableNames.deliveryGuideItems).select("*")).order("planned_date", { ascending: true }),
@@ -344,7 +355,7 @@ function App() {
         withUser(supabase.from(tableNames.orgScenarioItems).select("*")).order("person_name"),
         withUser(supabase.from(tableNames.userPreferences).select("*")).maybeSingle()
       ]);
-      const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, marketBenchmarks.error, guardians.error, deliveries.error, indicators.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
+      const failures = [people.error, stakeholders.error, suppliers.error, categories.error, diagnosis.error, pillars.error, handover.error, coaching.error, routines.error, criticalProcesses.error, marketBenchmarks.error, guardians.error, deliveries.error, indicators.error, scenarios.error, scenarioItems.error, preferences.error].filter(Boolean);
       if (failures.length) throw failures[0];
       if (!pillars.data?.length || !handover.data?.length || !scenarios.data?.length) {
         await ensureInitialData(userId);
@@ -376,6 +387,7 @@ function App() {
         handoverChecklist: handover.data?.map((row: Record<string, unknown>) => normalizeHandover(fromSnake<HandoverItem>(row))) ?? initialData.handoverChecklist,
         coachingSessions: coaching.data?.map((row: Record<string, unknown>) => normalizeCoaching(fromSnake<CoachingSession>(row))) ?? initialData.coachingSessions,
         clientRoutines: routines.data?.map((row: Record<string, unknown>) => normalizeClientRoutine(fromSnake<ClientRoutine>(row))) ?? [],
+        criticalProcesses: criticalProcesses.data?.map((row: Record<string, unknown>) => normalizeCriticalProcess(fromSnake<CriticalProcess>(row))) ?? initialData.criticalProcesses,
         marketBenchmarks: marketBenchmarks.data?.map((row: Record<string, unknown>) => normalizeMarketBenchmark(fromSnake<MarketBenchmark>(row))) ?? initialData.marketBenchmarks,
         guardians: guardians.data?.map((row: Record<string, unknown>) => normalizeGuardian(fromSnake<Guardian>(row))) ?? initialData.guardians,
         deliveryGuideItems: deliveries.data?.map((row: Record<string, unknown>) => normalizeDelivery(fromSnake<DeliveryGuideItem>(row))) ?? [],
@@ -425,6 +437,7 @@ function App() {
       insertMany("methodologyPillars", methodologyPillarsSeed),
       insertMany("handoverChecklist", initialData.handoverChecklist),
       insertMany("coachingSessions", coachingSessionsSeed),
+      insertMany("criticalProcesses", criticalProcessesSeed),
       insertMany("marketBenchmarks", marketBenchmarkSeed),
       insertMany("guardians", guardiansSeed),
       insertMany("successIndicators", initialData.successIndicators),
@@ -474,7 +487,7 @@ function App() {
       setError("Usuario visualizador nao pode salvar alteracoes.");
       return;
     }
-    const stamped = ["methodologyPillars", "handoverChecklist", "coachingSessions", "clientRoutines", "marketBenchmarks", "guardians", "deliveryGuideItems", "successIndicators"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
+    const stamped = ["methodologyPillars", "handoverChecklist", "coachingSessions", "clientRoutines", "criticalProcesses", "marketBenchmarks", "guardians", "deliveryGuideItems", "successIndicators"].includes(collection) ? { ...row, updatedAt: todayIso() } as T : row;
     setData((current) => {
       const nextRows = (current[collection] as Array<{ id: string }>).map((item) => (item.id === row.id ? stamped : item));
       return { ...current, [collection]: nextRows } as AppData;
@@ -649,6 +662,16 @@ function App() {
               onChange={(row) => upsertRow("clientRoutines", row)}
             />
           )}
+          {activeTab === "criticalProcesses" && (
+            <CriticalProcessesPanel
+              canEdit={canEdit}
+              rows={data.criticalProcesses}
+              categories={data.categories}
+              addProcess={() => addRow("criticalProcesses", { ...emptyCriticalProcess, name: "Novo processo critico" })}
+              deleteProcess={(id) => deleteRow("criticalProcesses", id)}
+              onChange={(row) => upsertRow("criticalProcesses", row)}
+            />
+          )}
           {activeTab === "guardians" && (
             <GuardiansPanel
               canEdit={canEdit}
@@ -752,11 +775,12 @@ function Dashboard({ dayState, data, metrics }: {
       <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Metric title="Dia atual" value={`${dayState.elapsed}/100`} note={dayState.phase} />
         <Metric title="Progresso do tempo" value={percent(dayState.timeProgress)} note={`${formatDate(dayState.startDate)} a ${formatDate(dayState.endDate)}`} />
-        <Metric title="Progresso geral" value={percent(metrics.overall)} note="7 frentes" />
+        <Metric title="Progresso geral" value={percent(metrics.overall)} note="8 frentes" />
         <Metric title="Pessoas" value={`${metrics.peopleDone}/${data.people.length}`} note="pessoas conversadas" />
         <Metric title="Handover Thais" value={`${metrics.handoverDone}/${data.handoverChecklist.length}`} note="pontos concluidos" />
         <Metric title="Sessoes de Coaching" value={`${metrics.coachingDone}/6`} note="sessoes realizadas" />
         <Metric title="Benchmark Mercado" value={`${metrics.benchmarkDone}/${metrics.benchmarkGoal}`} note="empresas conversadas" />
+        <Metric title="Processos Criticos" value={`${metrics.criticalProcessesDone}/${metrics.criticalProcessesTotal}`} note="acoes no SCRUM" />
         <Metric title="Entregas" value={`${metrics.deliveryDone}/${data.deliveryGuideItems.length}`} note="guia dos marcos" />
         <Metric title="Guardioes" value={`${metrics.guardiansAssigned}/${data.guardians.length}`} note="processos com responsavel" />
         <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${data.stakeholders.length}`} note="conversados" />
@@ -799,6 +823,7 @@ function Dashboard({ dayState, data, metrics }: {
           <ProgressRow label={`Handover Thais (${metrics.handoverDone}/${data.handoverChecklist.length})`} value={metrics.handoverProgress} />
           <ProgressRow label={`Coaching (${metrics.coachingDone}/6)`} value={metrics.coachingProgress} />
           <ProgressRow label={`Benchmark Mercado (${metrics.benchmarkDone}/${metrics.benchmarkGoal})`} value={metrics.benchmarkProgress} />
+          <ProgressRow label={`Processos Criticos (${metrics.criticalProcessesDone}/${metrics.criticalProcessesTotal})`} value={metrics.criticalProcessesProgress} />
           <ProgressRow label={`Stakeholders (${metrics.stakeholdersDone}/${data.stakeholders.length})`} value={metrics.stakeholderProgress} />
           <ProgressRow label={`Fornecedores (${metrics.suppliersDone}/${metrics.supplierGoal})`} value={metrics.supplierProgress} />
           <ProgressRow label={`Pilares (${metrics.pillarsDone}/${data.methodologyPillars.length})`} value={metrics.pillarProgress} />
@@ -821,6 +846,15 @@ function Dashboard({ dayState, data, metrics }: {
         </Panel>
         <Panel title="Pessoas x quantidade de categorias">
           <RankedRows items={data.people.map((person) => [person.name, `${person.categoryIds.length} categorias`])} />
+        </Panel>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Processos criticos em destaque">
+          <RankedRows items={data.criticalProcesses.filter((item) => item.showOnDashboard).map((item) => [item.name, item.scrumActionsDone ? "SCRUM concluido" : "Pendente"])} />
+        </Panel>
+        <Panel title="Processos criticos pendentes">
+          <RankedRows items={data.criticalProcesses.filter((item) => !item.scrumActionsDone).slice(0, 10).map((item) => [item.name, item.handoverDate || "Handover pendente"])} />
         </Panel>
       </section>
 
@@ -1252,6 +1286,98 @@ function ClientRoutinesPanel({
           </div>
           <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
           {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir esta rotina permanentemente?")) deleteRoutine(row.id); }}><Trash2 size={16} /> Excluir rotina</button></ActionBar>}
+        </CardLayout>
+      )}
+    </Panel>
+  );
+}
+
+function CriticalProcessesPanel({
+  rows,
+  categories,
+  addProcess,
+  deleteProcess,
+  onChange,
+  canEdit
+}: {
+  rows: CriticalProcess[];
+  categories: Category[];
+  addProcess: () => Promise<string>;
+  deleteProcess: (id: string) => void;
+  onChange: (row: CriticalProcess) => void;
+  canEdit: boolean;
+}) {
+  const sortedRows = [...rows].sort((a, b) => Number(a.scrumActionsDone) - Number(b.scrumActionsDone) || a.name.localeCompare(b.name));
+  const [selected, setSelected] = useState(sortedRows[0]?.id || "");
+  const row = rows.find((item) => item.id === selected) || sortedRows[0];
+  const [draft, setDraft] = useState(row);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!sortedRows.some((item) => item.id === selected)) setSelected(sortedRows[0]?.id || "");
+  }, [rows, selected, sortedRows]);
+  useEffect(() => {
+    if (row) {
+      setDraft(row);
+      setEditing(false);
+      setSaved(false);
+    }
+  }, [row?.id]);
+  const createProcess = async () => {
+    const id = await addProcess();
+    if (id) {
+      setSelected(id);
+      setEditing(true);
+    }
+  };
+  const save = () => {
+    if (!draft) return;
+    onChange(draft);
+    setEditing(false);
+    setSaved(true);
+  };
+  const clear = () => {
+    if (!draft || !window.confirm("Tem certeza que deseja limpar os detalhes deste processo? Nome sera preservado.")) return;
+    setDraft({ ...draft, categoryIds: [], handoverDate: "", description: "", scrumActions: "", notes: "", scrumActionsDone: false, showOnDashboard: true });
+    setSaved(false);
+  };
+  const completed = rows.filter((item) => item.scrumActionsDone).length;
+  const featured = rows.filter((item) => item.showOnDashboard);
+  return (
+    <Panel title="Processos Criticos" action={canEdit ? <button className="btn" onClick={createProcess}><Plus size={16} /> Novo processo</button> : <Badge tone="warn">Somente leitura</Badge>}>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Metric title="Processos concluidos" value={`${completed}/${rows.length}`} note="acoes no SCRUM" />
+        <Metric title="Na pagina inicial" value={String(featured.length)} note="cards em destaque" />
+        <Metric title="Categorias vinculadas" value={String(new Set(rows.flatMap((item) => item.categoryIds)).size)} note="cobertura dos processos" />
+      </div>
+      {!row || !draft ? (
+        <div className="rounded-md border border-dashed border-line bg-surface p-8 text-center">
+          <ClipboardCheck className="mx-auto text-muted" size={30} />
+          <h3 className="mt-3 font-semibold">Nenhum processo critico cadastrado</h3>
+          <p className="mt-1 text-sm text-muted">Use o botao Novo processo para iniciar o mapeamento.</p>
+        </div>
+      ) : (
+        <CardLayout rows={sortedRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={item.scrumActionsDone ? "Concluido no SCRUM" : "Pendente de desdobramento"} meta={item.showOnDashboard ? "Dashboard" : "Fora do dashboard"} />}>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Field disabled={!editing} label="Nome do processo" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
+            <Field disabled={!editing} label="Data do handover" type="date" value={draft.handoverDate} onChange={(value) => setDraft({ ...draft, handoverDate: value })} />
+            <MultiSelect disabled={!editing} label="Categorias" value={draft.categoryIds} options={categories} onChange={(value) => setDraft({ ...draft, categoryIds: value })} />
+            <div className="grid gap-2 rounded-md border border-line bg-card p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input className="h-4 w-4 accent-leaf" disabled={!editing} type="checkbox" checked={draft.scrumActionsDone} onChange={(event) => setDraft({ ...draft, scrumActionsDone: event.target.checked })} />
+                Acoes desdobradas no SCRUM
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input className="h-4 w-4 accent-leaf" disabled={!editing} type="checkbox" checked={draft.showOnDashboard} onChange={(event) => setDraft({ ...draft, showOnDashboard: event.target.checked })} />
+                Aparecer na pagina inicial
+              </label>
+            </div>
+            <Field disabled={!editing} label="Descricao" area value={draft.description} onChange={(value) => setDraft({ ...draft, description: value })} />
+            <Field disabled={!editing} label="Acoes que devo cadastrar no SCRUM" area value={draft.scrumActions} onChange={(value) => setDraft({ ...draft, scrumActions: value })} />
+            <Field disabled={!editing} label="Anotacoes" area value={draft.notes} onChange={(value) => setDraft({ ...draft, notes: value })} />
+          </div>
+          <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
+          {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este processo critico permanentemente?")) deleteProcess(row.id); }}><Trash2 size={16} /> Excluir processo</button></ActionBar>}
         </CardLayout>
       )}
     </Panel>
@@ -2427,6 +2553,8 @@ function calculateMetrics(data: AppData) {
   const suppliersDone = (scopedSuppliers.length ? scopedSuppliers : data.suppliers.slice(0, supplierGoal)).filter(isSupplierDone).length;
   const benchmarkGoal = Math.max(5, data.marketBenchmarks.length || 5);
   const benchmarkDone = data.marketBenchmarks.filter(isBenchmarkDone).length;
+  const criticalProcessesTotal = data.criticalProcesses.length;
+  const criticalProcessesDone = data.criticalProcesses.filter((item) => item.scrumActionsDone).length;
   const pillarsDone = data.methodologyPillars.filter((item) => item.status === "Concluido" || (item.decision && item.evidence)).length;
   const peopleProgress = data.people.length ? peopleDone / data.people.length : 0;
   const handoverProgress = data.handoverChecklist.length ? handoverDone / data.handoverChecklist.length : 0;
@@ -2434,6 +2562,7 @@ function calculateMetrics(data: AppData) {
   const stakeholderProgress = data.stakeholders.length ? stakeholdersDone / data.stakeholders.length : 0;
   const supplierProgress = suppliersDone / supplierGoal;
   const benchmarkProgress = benchmarkDone / benchmarkGoal;
+  const criticalProcessesProgress = criticalProcessesTotal ? criticalProcessesDone / criticalProcessesTotal : 0;
   const pillarProgress = data.methodologyPillars.length ? pillarsDone / data.methodologyPillars.length : 0;
   const assignedCategories = new Set(data.people.flatMap((person) => person.categoryIds || []));
   const unassignedCategoryNames = data.categories.filter((category) => !assignedCategories.has(category.id)).map((category) => category.name);
@@ -2448,6 +2577,8 @@ function calculateMetrics(data: AppData) {
     supplierGoal,
     benchmarkDone,
     benchmarkGoal,
+    criticalProcessesDone,
+    criticalProcessesTotal,
     pillarsDone,
     peopleProgress,
     handoverProgress,
@@ -2455,8 +2586,9 @@ function calculateMetrics(data: AppData) {
     stakeholderProgress,
     supplierProgress,
     benchmarkProgress,
+    criticalProcessesProgress,
     pillarProgress,
-    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + stakeholderProgress + supplierProgress + pillarProgress) / 7,
+    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + criticalProcessesProgress + stakeholderProgress + supplierProgress + pillarProgress) / 8,
     supplierSpend: data.suppliers.reduce((sum, item) => sum + Number(item.spend || 0), 0),
     topSupplierSpend: data.suppliers.slice(0, 20).reduce((sum, item) => sum + Number(item.spend || 0), 0),
     categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0),

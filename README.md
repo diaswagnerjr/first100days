@@ -24,6 +24,7 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Countdown recalculado com inicio em `22/06/2026` e checkpoints de 30, 60 e 100 dias
 - Coaching com pacote de 6 sessoes, historico e preparacao da proxima conversa
 - Rotinas da Area por Tecnologia, Facilities / SSQV, Marketing, Rotinas Internas e Outras, com dashboard executivo clicavel
+- Processos Criticos com handover, categorias, acoes para SCRUM, exibicao opcional no dashboard e checklist de conclusao
 - Guardioes de processos, rituais e temas estruturais da area
 - Guia de Entregas com marcos de 30, 60, 90 e 120 dias e indicadores de sucesso da gestao
 - Tema claro/escuro
@@ -84,8 +85,9 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 8. Execute o SQL incremental em `supabase/migrations/20260623120000_guardians_delivery_handover_people.sql`.
 9. Execute o SQL incremental em `supabase/migrations/20260629120000_people_carteiras_sommos_capabilities.sql`.
 10. Execute o SQL incremental em `supabase/migrations/20260701120000_market_benchmark.sql`.
-11. Confira se Auth esta habilitado com e-mail/senha.
-12. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
+11. Execute o SQL incremental em `supabase/migrations/20260706120000_critical_processes.sql`.
+12. Confira se Auth esta habilitado com e-mail/senha.
+13. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -96,6 +98,7 @@ Tabelas principais:
 - `handover_checklist`
 - `coaching_sessions`, `client_routines`, `guardians`
 - `market_benchmarks`
+- `critical_processes`
 - `delivery_guide_items`, `success_indicators`
 - `org_scenarios`, `org_scenario_items`
 - `meetings`, `reminders`
@@ -106,7 +109,7 @@ Observacao de seguranca: use apenas `VITE_SUPABASE_ANON_KEY`/publishable key no 
 Notas funcionais:
 
 - A aba `Categorias` nao aparece no menu principal, mas a tabela `categories` continua sendo usada no dashboard, em Pessoas e na simulacao de estrutura.
-- O progresso geral considera Pessoas, Handover Thais, Coaching, Benchmark Mercado, Stakeholders, Fornecedores e Pilares dos 100 dias.
+- O progresso geral considera Pessoas, Handover Thais, Coaching, Benchmark Mercado, Processos Criticos, Stakeholders, Fornecedores e Pilares dos 100 dias.
 - O modo claro/escuro usa upsert por `user_id` em `user_preferences`, evitando duplicidade de preferencia.
 - Anexos do handover sao salvos em `handover_checklist.attachments` como JSON para permitir download posterior.
 - Se fornecedores ou categorias estiverem vazios para um usuario existente, o app repopula essas tabelas a partir das planilhas no proximo carregamento.
@@ -116,6 +119,7 @@ Notas funcionais:
 - A migration `20260629120000_people_carteiras_sommos_capabilities.sql` adiciona campos incrementais em Pessoas, carrega SOMMOS e une as categorias da planilha de carteiras com qualquer atribuicao ja existente. Ela nao apaga anotacoes antigas.
 - A guia `Estrutura` foi removida da navegacao, mas as tabelas antigas `org_scenarios` e `org_scenario_items` foram preservadas para compatibilidade e historico.
 - A migration `20260701120000_market_benchmark.sql` cria a tabela `market_benchmarks`, com RLS, seed incremental de 5 empresas e nenhum overwrite dos dados existentes.
+- A migration `20260706120000_critical_processes.sql` cria a tabela `critical_processes`, com RLS, seed incremental dos processos iniciais e conclusao pelo checklist de acoes no SCRUM.
 
 ## GitHub Pages
 

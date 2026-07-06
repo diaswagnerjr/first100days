@@ -3,6 +3,7 @@ import type {
   Category,
   ClientRoutine,
   CoachingSession,
+  CriticalProcess,
   DeliveryGuideItem,
   Guardian,
   HandoverItem,
@@ -309,6 +310,41 @@ export const marketBenchmarkSeed: MarketBenchmark[] = Array.from({ length: 5 }, 
   updatedAt: ""
 }));
 
+export const criticalProcessesSeed: CriticalProcess[] = [
+  "Estrategia Google",
+  "Negociacao Radio",
+  "Incendio CD Aruja BC + Multa Movida/ LM",
+  "Gocil",
+  "Consultorias (Delegacao - Subcategorizacao) + Descentralizacao/ Delegacao",
+  "BID Limpeza",
+  "BID - Alimentacao",
+  "JSL - Jacarei"
+].map((name, index) => ({
+  id: id("critical-process", index),
+  name,
+  categoryIds: [],
+  handoverDate: "",
+  description: "",
+  scrumActions: "",
+  notes: "",
+  scrumActionsDone: false,
+  showOnDashboard: true,
+  updatedAt: ""
+}));
+
+export const emptyCriticalProcess: CriticalProcess = {
+  id: "critical-process-template",
+  name: "Novo processo critico",
+  categoryIds: [],
+  handoverDate: "",
+  description: "",
+  scrumActions: "",
+  notes: "",
+  scrumActionsDone: false,
+  showOnDashboard: true,
+  updatedAt: ""
+};
+
 export const guardiansSeed: Guardian[] = [
   {
     id: "guardian-001",
@@ -436,6 +472,7 @@ export const initialData: AppData = {
   coachingSessions: coachingSessionsSeed,
   clientRoutines: [],
   marketBenchmarks: marketBenchmarkSeed,
+  criticalProcesses: criticalProcessesSeed,
   guardians: guardiansSeed,
   deliveryGuideItems: deliveryGuideSeed,
   successIndicators: successIndicatorsSeed,
