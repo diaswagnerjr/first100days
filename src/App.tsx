@@ -73,7 +73,7 @@ import type {
   UserPreference
 } from "./lib/types";
 
-type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "criticalProcesses" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers" | "diagnosis";
+type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "criticalProcesses" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers";
 type CollectionKey =
   | "people"
   | "stakeholders"
@@ -112,8 +112,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> 
   { key: "deliveryGuide", label: "Guia de Entregas", icon: Target },
   { key: "stakeholders", label: "Stakeholders", icon: UserSquare2 },
   { key: "marketBenchmark", label: "Benchmark Mercado", icon: Building2 },
-  { key: "suppliers", label: "Fornecedores", icon: BriefcaseBusiness },
-  { key: "diagnosis", label: "Diagnostico", icon: ShieldAlert }
+  { key: "suppliers", label: "Fornecedores", icon: BriefcaseBusiness }
 ];
 
 const tableNames: Record<CollectionKey | "diagnosis" | "userPreferences", string> = {
@@ -249,10 +248,10 @@ const normalizePerson = (row: Person): Person => ({
   futureLeadershipGap: row.futureLeadershipGap || "",
   futureLeadershipDecision: row.futureLeadershipDecision || ""
 });
-const normalizeStakeholder = (row: Stakeholder): Stakeholder => ({ ...stakeholdersSeed[0], ...row, conversationDate: row.conversationDate || row.firstConversation || "", interactionStatus: row.interactionStatus || "Nao iniciado" });
-const normalizeSupplier = (row: Supplier): Supplier => ({ ...suppliersInitial[0], ...row, conversationDate: row.conversationDate || row.firstInteraction || "", interactionStatus: row.interactionStatus || row.relationshipStatus || "Nao iniciado", nextSteps: row.nextSteps || row.actionPlan || "" });
+const normalizeStakeholder = (row: Stakeholder): Stakeholder => ({ ...stakeholdersSeed[0], ...row, conversationDate: row.conversationDate || row.firstConversation || "", interactionStatus: row.interactionStatus || "Nao iniciado", showOnDashboard: row.showOnDashboard === true });
+const normalizeSupplier = (row: Supplier): Supplier => ({ ...suppliersInitial[0], ...row, conversationDate: row.conversationDate || row.firstInteraction || "", interactionStatus: row.interactionStatus || row.relationshipStatus || "Nao iniciado", nextSteps: row.nextSteps || row.actionPlan || "", showOnDashboard: row.showOnDashboard === true });
 const normalizePillar = (row: MethodologyPillar): MethodologyPillar => ({ ...(methodologyPillarsSeed.find((item) => item.name === row.name) ?? methodologyPillarsSeed[0]), ...row });
-const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [], section: row.section || "handover" });
+const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [], section: "administrativo" });
 const normalizeCoaching = (row: CoachingSession): CoachingSession => ({ ...coachingSessionsSeed[0], ...row, sessionNumber: Number(row.sessionNumber || 1), actionStatus: row.actionStatus || "Aberta" });
 const normalizeClientRoutine = (row: ClientRoutine): ClientRoutine => ({ ...emptyClientRoutine, ...row, status: row.status || "Ativa", area: row.area || "Outras" });
 const normalizeMarketBenchmark = (row: MarketBenchmark): MarketBenchmark => ({ ...marketBenchmarkSeed[0], ...row, status: row.status || "Nao iniciado" });
@@ -666,7 +665,6 @@ function App() {
             <CriticalProcessesPanel
               canEdit={canEdit}
               rows={data.criticalProcesses}
-              categories={data.categories}
               addProcess={() => addRow("criticalProcesses", { ...emptyCriticalProcess, name: "Novo processo critico" })}
               deleteProcess={(id) => deleteRow("criticalProcesses", id)}
               onChange={(row) => upsertRow("criticalProcesses", row)}
@@ -696,7 +694,7 @@ function App() {
               onIndicator={(row) => upsertRow("successIndicators", row)}
             />
           )}
-          {activeTab === "stakeholders" && <StakeholderPanel rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado" })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
+          {activeTab === "stakeholders" && <StakeholderPanel canEdit={canEdit} rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado", showOnDashboard: false })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
           {activeTab === "marketBenchmark" && (
             <MarketBenchmarkPanel
               canEdit={canEdit}
@@ -707,7 +705,6 @@ function App() {
             />
           )}
           {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} onChange={(row) => upsertRow("suppliers", row)} />}
-          {activeTab === "diagnosis" && <DiagnosisPanel diagnosis={data.diagnosis} onChange={updateDiagnosis} />}
         </main>
       </div>
     </Shell>
@@ -775,15 +772,14 @@ function Dashboard({ dayState, data, metrics }: {
       <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Metric title="Dia atual" value={`${dayState.elapsed}/100`} note={dayState.phase} />
         <Metric title="Progresso do tempo" value={percent(dayState.timeProgress)} note={`${formatDate(dayState.startDate)} a ${formatDate(dayState.endDate)}`} />
-        <Metric title="Progresso geral" value={percent(metrics.overall)} note="8 frentes" />
+        <Metric title="Progresso geral" value={percent(metrics.overall)} note="9 frentes" />
         <Metric title="Pessoas" value={`${metrics.peopleDone}/${data.people.length}`} note="pessoas conversadas" />
         <Metric title="Handover Thais" value={`${metrics.handoverDone}/${data.handoverChecklist.length}`} note="pontos concluidos" />
         <Metric title="Sessoes de Coaching" value={`${metrics.coachingDone}/6`} note="sessoes realizadas" />
         <Metric title="Benchmark Mercado" value={`${metrics.benchmarkDone}/${metrics.benchmarkGoal}`} note="empresas conversadas" />
         <Metric title="Processos Criticos" value={`${metrics.criticalProcessesDone}/${metrics.criticalProcessesTotal}`} note="acoes no SCRUM" />
-        <Metric title="Entregas" value={`${metrics.deliveryDone}/${data.deliveryGuideItems.length}`} note="guia dos marcos" />
-        <Metric title="Guardioes" value={`${metrics.guardiansAssigned}/${data.guardians.length}`} note="processos com responsavel" />
-        <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${data.stakeholders.length}`} note="conversados" />
+        <Metric title="Entregas" value={`${metrics.deliveryDone}/${metrics.deliveryTotal}`} note="guia dos marcos" />
+        <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${metrics.stakeholderGoal}`} note="marcados no dashboard" />
         <Metric title="Fornecedores" value={`${metrics.suppliersDone}/${metrics.supplierGoal}`} note="fichas preenchidas" />
       </section>
 
@@ -814,7 +810,7 @@ function Dashboard({ dayState, data, metrics }: {
         <Metric title="Spend PB'26 categorias" value={money(metrics.categorySpend)} note={`${data.categories.length} categorias carregadas`} />
         <Metric title="Spend fornecedores" value={money(metrics.supplierSpend)} note={`${data.suppliers.length} fornecedores carregados`} />
         <Metric title="Top 20 fornecedores" value={money(metrics.topSupplierSpend)} note="maiores da planilha" />
-        <Metric title="Categorias sem dono" value={String(metrics.unassignedCategories)} note="controle de cobertura do time" />
+        <Metric title="Categorias" value={String(data.categories.length)} note="base de referencia carregada" />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
@@ -824,7 +820,8 @@ function Dashboard({ dayState, data, metrics }: {
           <ProgressRow label={`Coaching (${metrics.coachingDone}/6)`} value={metrics.coachingProgress} />
           <ProgressRow label={`Benchmark Mercado (${metrics.benchmarkDone}/${metrics.benchmarkGoal})`} value={metrics.benchmarkProgress} />
           <ProgressRow label={`Processos Criticos (${metrics.criticalProcessesDone}/${metrics.criticalProcessesTotal})`} value={metrics.criticalProcessesProgress} />
-          <ProgressRow label={`Stakeholders (${metrics.stakeholdersDone}/${data.stakeholders.length})`} value={metrics.stakeholderProgress} />
+          <ProgressRow label={`Entregas cadastradas (${metrics.deliveryDone}/${metrics.deliveryTotal})`} value={metrics.deliveryProgress} />
+          <ProgressRow label={`Stakeholders (${metrics.stakeholdersDone}/${metrics.stakeholderGoal})`} value={metrics.stakeholderProgress} />
           <ProgressRow label={`Fornecedores (${metrics.suppliersDone}/${metrics.supplierGoal})`} value={metrics.supplierProgress} />
           <ProgressRow label={`Pilares (${metrics.pillarsDone}/${data.methodologyPillars.length})`} value={metrics.pillarProgress} />
         </Panel>
@@ -838,23 +835,13 @@ function Dashboard({ dayState, data, metrics }: {
         </Panel>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Categorias ainda nao atribuidas">
-          <div className="flex flex-wrap gap-2">
-            {metrics.unassignedCategoryNames.slice(0, 45).map((name) => <span key={name} className="rounded border border-line bg-surface px-2 py-1 text-xs">{name}</span>)}
-          </div>
-        </Panel>
-        <Panel title="Pessoas x quantidade de categorias">
-          <RankedRows items={data.people.map((person) => [person.name, `${person.categoryIds.length} categorias`])} />
-        </Panel>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4">
         <Panel title="Processos criticos em destaque">
-          <RankedRows items={data.criticalProcesses.filter((item) => item.showOnDashboard).map((item) => [item.name, item.scrumActionsDone ? "SCRUM concluido" : "Pendente"])} />
-        </Panel>
-        <Panel title="Processos criticos pendentes">
-          <RankedRows items={data.criticalProcesses.filter((item) => !item.scrumActionsDone).slice(0, 10).map((item) => [item.name, item.handoverDate || "Handover pendente"])} />
+          {data.criticalProcesses.some((item) => item.showOnDashboard) ? (
+            <RankedRows items={data.criticalProcesses.filter((item) => item.showOnDashboard).map((item) => [item.name, item.scrumActionsDone ? "SCRUM concluido" : "Pendente"])} />
+          ) : (
+            <p className="text-sm text-muted">Nenhum processo critico marcado para aparecer no dashboard.</p>
+          )}
         </Panel>
       </section>
 
@@ -1294,14 +1281,12 @@ function ClientRoutinesPanel({
 
 function CriticalProcessesPanel({
   rows,
-  categories,
   addProcess,
   deleteProcess,
   onChange,
   canEdit
 }: {
   rows: CriticalProcess[];
-  categories: Category[];
   addProcess: () => Promise<string>;
   deleteProcess: (id: string) => void;
   onChange: (row: CriticalProcess) => void;
@@ -1338,7 +1323,7 @@ function CriticalProcessesPanel({
   };
   const clear = () => {
     if (!draft || !window.confirm("Tem certeza que deseja limpar os detalhes deste processo? Nome sera preservado.")) return;
-    setDraft({ ...draft, categoryIds: [], handoverDate: "", description: "", scrumActions: "", notes: "", scrumActionsDone: false, showOnDashboard: true });
+    setDraft({ ...draft, handoverDate: "", description: "", scrumActions: "", notes: "", scrumActionsDone: false, showOnDashboard: true });
     setSaved(false);
   };
   const completed = rows.filter((item) => item.scrumActionsDone).length;
@@ -1348,7 +1333,7 @@ function CriticalProcessesPanel({
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <Metric title="Processos concluidos" value={`${completed}/${rows.length}`} note="acoes no SCRUM" />
         <Metric title="Na pagina inicial" value={String(featured.length)} note="cards em destaque" />
-        <Metric title="Categorias vinculadas" value={String(new Set(rows.flatMap((item) => item.categoryIds)).size)} note="cobertura dos processos" />
+        <Metric title="Pendentes" value={String(rows.length - completed)} note="aguardando SCRUM" />
       </div>
       {!row || !draft ? (
         <div className="rounded-md border border-dashed border-line bg-surface p-8 text-center">
@@ -1361,7 +1346,6 @@ function CriticalProcessesPanel({
           <div className="grid gap-3 lg:grid-cols-2">
             <Field disabled={!editing} label="Nome do processo" value={draft.name} onChange={(value) => setDraft({ ...draft, name: value })} />
             <Field disabled={!editing} label="Data do handover" type="date" value={draft.handoverDate} onChange={(value) => setDraft({ ...draft, handoverDate: value })} />
-            <MultiSelect disabled={!editing} label="Categorias" value={draft.categoryIds} options={categories} onChange={(value) => setDraft({ ...draft, categoryIds: value })} />
             <div className="grid gap-2 rounded-md border border-line bg-card p-3">
               <label className="flex items-center gap-2 text-sm">
                 <input className="h-4 w-4 accent-leaf" disabled={!editing} type="checkbox" checked={draft.scrumActionsDone} onChange={(event) => setDraft({ ...draft, scrumActionsDone: event.target.checked })} />
@@ -1385,45 +1369,15 @@ function CriticalProcessesPanel({
 }
 
 function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows: HandoverItem[]; addItem: (section: HandoverItem["section"], itemName?: string) => Promise<string>; deleteItem: (id: string) => void; onChange: (row: HandoverItem) => void; canEdit: boolean }) {
-  const handoverRows = rows.filter((item) => (item.section || "handover") === "handover");
-  const adminRows = rows.filter((item) => item.section === "administrativo");
-  const [section, setSection] = useState<HandoverItem["section"]>("handover");
-  const activeRows = section === "handover" ? handoverRows : adminRows;
-  const [selected, setSelected] = useState(activeRows[0]?.id || rows[0]?.id || "");
   const [sortByCluster, setSortByCluster] = useState(false);
-  const sortedRows = sortByCluster ? [...activeRows].sort((a, b) => `${a.cluster || handoverCluster(a.item)}-${a.item}`.localeCompare(`${b.cluster || handoverCluster(b.item)}-${b.item}`)) : activeRows;
-  const row = rows.find((item) => item.id === selected) || sortedRows[0];
-  const [draft, setDraft] = useState(row);
-  const [editing, setEditing] = useState(false);
-  const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    const nextRows = section === "handover" ? handoverRows : adminRows;
-    if (!nextRows.some((item) => item.id === selected)) setSelected(nextRows[0]?.id || "");
-  }, [section, rows, selected]);
-  useEffect(() => {
-    if (row) {
-      setDraft(row);
-      setEditing(false);
-      setSaved(false);
-    }
-  }, [row?.id]);
-  if (!row) return null;
-  const current = draft || row;
-  const clusters = Array.from(new Set([...rows.map((item) => item.cluster || handoverCluster(item.item)), "Handover administrativo"])).sort();
-  const createItem = async (nextSection: HandoverItem["section"]) => {
-    const id = await addItem(nextSection);
-    if (id) {
-      setSection(nextSection);
-      setSelected(id);
-      setEditing(true);
-    }
+  const sortedRows = sortByCluster ? [...rows].sort((a, b) => `${a.cluster || handoverCluster(a.item)}-${a.item}`.localeCompare(`${b.cluster || handoverCluster(b.item)}-${b.item}`)) : rows;
+  const done = rows.filter((item) => item.status === "Concluido").length;
+  const createChecklistItem = async () => {
+    const itemName = window.prompt("Nome do item do checklist:");
+    if (!itemName?.trim()) return;
+    await addItem("administrativo", itemName.trim());
   };
-  const save = () => {
-    onChange(current);
-    setEditing(false);
-    setSaved(true);
-  };
-  const toggleAdminItem = (item: HandoverItem) => {
+  const toggleItem = (item: HandoverItem) => {
     if (!canEdit) return;
     onChange({
       ...item,
@@ -1431,87 +1385,51 @@ function HandoverPanel({ rows, addItem, deleteItem, onChange, canEdit }: { rows:
       section: "administrativo"
     });
   };
-  const createAdminChecklistItem = async () => {
-    const itemName = window.prompt("Nome do item do checklist administrativo:");
-    if (!itemName?.trim()) return;
-    const id = await addItem("administrativo", itemName.trim());
-    if (id) {
-      setSection("administrativo");
-      setSelected(id);
-    }
-  };
-  const clear = () => {
-    if (!window.confirm("Tem certeza que deseja limpar tudo deste ponto de handover? Tema e cluster serao preservados.")) return;
-    setDraft({ ...current, status: "Nao iniciado", comment: "", owner: "Wagner / Thais", dueDate: "", links: "", attachments: [] });
-    setSaved(false);
-  };
   return (
     <Panel
       title="Handover Thais"
       action={
         <div className="flex flex-wrap gap-2">
-          {canEdit && <button className="btn" onClick={() => createItem("handover")}><Plus size={16} /> Novo topico</button>}
-          {canEdit && section === "administrativo" && <button className="btn" onClick={createAdminChecklistItem}><Plus size={16} /> Item do checklist</button>}
+          {canEdit && <button className="btn" onClick={createChecklistItem}><Plus size={16} /> Item do checklist</button>}
           <button className="btn" onClick={() => setSortByCluster((value) => !value)}><ListFilter size={16} /> {sortByCluster ? "Ordem original" : "Ordenar por cluster"}</button>
         </div>
       }
     >
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Metric title="Topicos de handover" value={`${handoverRows.filter((item) => item.status === "Concluido").length}/${handoverRows.length}`} note="progresso dos temas" />
-        <Metric title="Checklist administrativo" value={`${adminRows.filter((item) => item.status === "Concluido").length}/${adminRows.length}`} note="itens concluidos" />
-        <Metric title="Total do handover" value={`${rows.filter((item) => item.status === "Concluido").length}/${rows.length}`} note="dashboard dinamico" />
+      <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <Metric title="Checklist" value={`${done}/${rows.length}`} note="total do handover" />
+        <Metric title="Pendentes" value={String(rows.length - done)} note="pontos ainda abertos" />
       </div>
-      <div className="mb-4 flex flex-wrap gap-2">
-        <button onClick={() => setSection("handover")} className={`rounded-md border px-3 py-2 text-sm ${section === "handover" ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>Handovers ({handoverRows.length})</button>
-        <button onClick={() => setSection("administrativo")} className={`rounded-md border px-3 py-2 text-sm ${section === "administrativo" ? "border-ink bg-ink text-white" : "border-line bg-surface"}`}>Checklist administrativo ({adminRows.length})</button>
+      <div className="rounded-md border border-line bg-surface p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold">Checklist</h3>
+          <Badge>{done}/{rows.length} concluidos</Badge>
+        </div>
+        <div className="grid gap-2">
+          {sortedRows.map((item) => {
+            const checked = item.status === "Concluido";
+            return (
+              <div key={item.id} className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${checked ? "border-leaf/40 bg-leaf/10" : "border-line bg-card"}`}>
+                <label className="flex min-w-0 flex-1 items-center gap-3 text-sm">
+                  <input
+                    className="h-4 w-4 accent-leaf"
+                    disabled={!canEdit}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleItem(item)}
+                  />
+                  <span className={checked ? "font-semibold text-leaf" : "font-medium"}>{item.item}</span>
+                </label>
+                <span className="hidden rounded border border-line px-2 py-1 text-xs text-muted sm:inline">{item.cluster || handoverCluster(item.item)}</span>
+                {canEdit && (
+                  <button className="btn" onClick={() => { if (window.confirm("Excluir este item do checklist?")) deleteItem(item.id); }}>
+                    <Trash2 size={16} /> Excluir
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
-      {section === "administrativo" ? (
-        <div className="rounded-md border border-line bg-surface p-3">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold">Checklist administrativo</h3>
-            <Badge>{adminRows.filter((item) => item.status === "Concluido").length}/{adminRows.length} concluidos</Badge>
-          </div>
-          <div className="grid gap-2">
-            {sortedRows.map((item) => {
-              const checked = item.status === "Concluido";
-              return (
-                <div key={item.id} className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${checked ? "border-leaf/40 bg-leaf/10" : "border-line bg-card"}`}>
-                  <label className="flex min-w-0 flex-1 items-center gap-3 text-sm">
-                    <input
-                      className="h-4 w-4 accent-leaf"
-                      disabled={!canEdit}
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleAdminItem(item)}
-                    />
-                    <span className={checked ? "font-semibold text-leaf" : "font-medium"}>{item.item}</span>
-                  </label>
-                  {canEdit && (
-                    <button className="btn" onClick={() => { if (window.confirm("Excluir este item do checklist?")) deleteItem(item.id); }}>
-                      <Trash2 size={16} /> Excluir
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-      <CardLayout rows={sortedRows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.item} subtitle={item.status} meta={item.cluster || handoverCluster(item.item)} />}>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Field disabled={!editing} label={current.section === "administrativo" ? "Item administrativo" : "Tema"} value={current.item} onChange={(value) => setDraft({ ...current, item: value })} />
-          <Select disabled={!editing} label="Cluster" value={current.cluster || handoverCluster(current.item)} onChange={(value) => setDraft({ ...current, cluster: value })} options={clusters} />
-          <Select disabled={!editing} label="Status" value={current.status} onChange={(value) => setDraft({ ...current, status: value as HandoverItem["status"] })} options={["Nao iniciado", "Iniciado", "Em andamento", "Em risco", "Concluido"]} />
-          <Field disabled={!editing} label="Responsaveis" value={current.owner} onChange={(value) => setDraft({ ...current, owner: value })} />
-          <Field disabled={!editing} label="Prazo" type="date" value={current.dueDate} onChange={(value) => setDraft({ ...current, dueDate: value })} />
-          <Field disabled={!editing} label="Comentarios" area value={current.comment} onChange={(value) => setDraft({ ...current, comment: value })} />
-          <Field disabled={!editing} label="Links" area value={current.links} onChange={(value) => setDraft({ ...current, links: value })} />
-        </div>
-        <AttachmentBox disabled={!editing} row={current} onChange={setDraft} />
-        <EditActions canEdit={canEdit} editing={editing} saved={saved} updatedAt={row.updatedAt} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
-        {canEdit && <ActionBar><button className="btn" onClick={() => { if (window.confirm("Excluir este item do handover permanentemente?")) deleteItem(row.id); }}><Trash2 size={16} /> Excluir item</button></ActionBar>}
-      </CardLayout>
-      )}
     </Panel>
   );
 }
@@ -2094,13 +2012,13 @@ function MarketBenchmarkPanel({
   );
 }
 
-function StakeholderPanel({ rows, addRow, deleteRow, onChange }: { rows: Stakeholder[]; addRow: () => void; deleteRow: (id: string) => void; onChange: (row: Stakeholder) => void }) {
+function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows: Stakeholder[]; addRow: () => void; deleteRow: (id: string) => void; onChange: (row: Stakeholder) => void; canEdit: boolean }) {
   const [selected, setSelected] = useState(rows[0]?.id || "");
   const row = rows.find((item) => item.id === selected) || rows[0];
   if (!row) return null;
   return (
-    <Panel title="Stakeholders" action={<button className="btn" onClick={addRow}><Plus size={16} /> Novo stakeholder</button>}>
-      <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={`${item.area} | ${item.criticality}`} meta={item.conversationDate ? "Conversa registrada" : "Pendente"} />}>
+    <Panel title="Stakeholders" action={canEdit ? <button className="btn" onClick={addRow}><Plus size={16} /> Novo stakeholder</button> : <Badge tone="warn">Somente leitura</Badge>}>
+      <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={`${item.area} | ${item.criticality}`} meta={item.showOnDashboard ? "Conta no dashboard" : item.conversationDate ? "Conversa registrada" : "Pendente"} />}>
         <div className="grid gap-3 lg:grid-cols-2">
           <Field label="Nome" value={row.name} onChange={(value) => onChange({ ...row, name: value })} />
           <Field label="Area" value={row.area} onChange={(value) => onChange({ ...row, area: value })} />
@@ -2114,11 +2032,15 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange }: { rows: Stakeho
           <Field label="Oportunidades" area value={row.opportunities} onChange={(value) => onChange({ ...row, opportunities: value })} />
           <Field label="Proximos passos" area value={row.nextSteps} onChange={(value) => onChange({ ...row, nextSteps: value })} />
           <Field label="Anotacoes" area value={row.notes} onChange={(value) => onChange({ ...row, notes: value })} />
+          <label className="flex items-center gap-2 rounded-md border border-line bg-card p-3 text-sm">
+            <input className="h-4 w-4 accent-leaf" disabled={!canEdit} type="checkbox" checked={row.showOnDashboard} onChange={(event) => onChange({ ...row, showOnDashboard: event.target.checked })} />
+            Contar este stakeholder no dashboard e progresso geral
+          </label>
         </div>
         <ActionBar>
-          <button className="btn" onClick={() => onChange(row)}>Salvar</button>
+          {canEdit && <button className="btn" onClick={() => onChange(row)}>Salvar</button>}
           <button className="btn" onClick={() => downloadIcs(`Stakeholder - ${row.name}`, row.conversationDate, row.nextSteps)}><CalendarPlus size={16} /> Exportar .ics</button>
-          <button className="btn" onClick={() => deleteRow(row.id)}><Trash2 size={16} /> Excluir</button>
+          {canEdit && <button className="btn" onClick={() => deleteRow(row.id)}><Trash2 size={16} /> Excluir</button>}
         </ActionBar>
       </CardLayout>
     </Panel>
@@ -2151,7 +2073,7 @@ function SupplierPanel({ rows, onChange, canEdit }: { rows: Supplier[]; onChange
   };
   const clear = () => {
     if (!window.confirm("Tem certeza que deseja limpar tudo desta ficha de fornecedor? Nome, categoria e spend serao preservados.")) return;
-    setDraft({ ...current, relatedArea: "", criticality: "Media", contact: "", phone: "", email: "", firstInteraction: "", nextInteraction: "", relationshipStatus: "Mapear", meetings: 0, opportunities: "", risks: "", actionPlan: "", conversationDate: "", interactionStatus: "Nao iniciado", nextSteps: "", notes: "" });
+    setDraft({ ...current, relatedArea: "", criticality: "Media", contact: "", phone: "", email: "", firstInteraction: "", nextInteraction: "", relationshipStatus: "Mapear", meetings: 0, opportunities: "", risks: "", actionPlan: "", conversationDate: "", interactionStatus: "Nao iniciado", nextSteps: "", notes: "", showOnDashboard: false });
     setSaved(false);
   };
   return (
@@ -2171,6 +2093,10 @@ function SupplierPanel({ rows, onChange, canEdit }: { rows: Supplier[]; onChange
           <div className="grid gap-3 lg:grid-cols-2">
             <ReadOnly label="Fornecedor" value={current.name} />
             <ReadOnly label="Spend" value={money(current.spend)} />
+            <label className="flex items-center gap-2 rounded-md border border-line bg-card p-3 text-sm lg:col-span-2">
+              <input className="h-4 w-4 accent-leaf" disabled={!editing} type="checkbox" checked={current.showOnDashboard} onChange={(event) => setDraft({ ...current, showOnDashboard: event.target.checked })} />
+              Contar este fornecedor no dashboard e progresso geral
+            </label>
             <Select disabled={!editing} label="Area relacionada" value={current.relatedArea} onChange={(value) => setDraft({ ...current, relatedArea: value })} options={["", "RH", "TI", "Juridico", "Marketing", "Financas", "Facilities", "Operacoes"]} />
             <Select disabled={!editing} label="Criticidade" value={current.criticality} onChange={(value) => setDraft({ ...current, criticality: value as Supplier["criticality"] })} options={["Alta", "Media", "Baixa"]} />
             <Field disabled={!editing} label="Data da conversa" type="date" value={current.conversationDate} onChange={(value) => setDraft({ ...current, conversationDate: value, firstInteraction: value })} />
@@ -2546,11 +2472,12 @@ function calculateMetrics(data: AppData) {
   const handoverDone = data.handoverChecklist.filter((item) => item.status === "Concluido").length;
   const coachingDone = data.coachingSessions.filter((item) => item.sessionDate).length;
   const deliveryDone = data.deliveryGuideItems.filter((item) => item.status === "Concluido").length;
-  const guardiansAssigned = data.guardians.filter((item) => item.guardianPerson).length;
-  const stakeholdersDone = data.stakeholders.filter((item) => item.conversationDate || item.firstConversation).length;
-  const scopedSuppliers = data.suppliers.filter(isSupplierScoped);
-  const supplierGoal = Math.max(1, scopedSuppliers.length || Math.min(20, data.suppliers.length));
-  const suppliersDone = (scopedSuppliers.length ? scopedSuppliers : data.suppliers.slice(0, supplierGoal)).filter(isSupplierDone).length;
+  const dashboardStakeholders = data.stakeholders.filter((item) => item.showOnDashboard);
+  const stakeholderGoal = dashboardStakeholders.length;
+  const stakeholdersDone = dashboardStakeholders.filter((item) => item.conversationDate || item.firstConversation).length;
+  const dashboardSuppliers = data.suppliers.filter((item) => item.showOnDashboard);
+  const supplierGoal = dashboardSuppliers.length;
+  const suppliersDone = dashboardSuppliers.filter(isSupplierDone).length;
   const benchmarkGoal = Math.max(5, data.marketBenchmarks.length || 5);
   const benchmarkDone = data.marketBenchmarks.filter(isBenchmarkDone).length;
   const criticalProcessesTotal = data.criticalProcesses.length;
@@ -2559,8 +2486,10 @@ function calculateMetrics(data: AppData) {
   const peopleProgress = data.people.length ? peopleDone / data.people.length : 0;
   const handoverProgress = data.handoverChecklist.length ? handoverDone / data.handoverChecklist.length : 0;
   const coachingProgress = coachingDone / 6;
-  const stakeholderProgress = data.stakeholders.length ? stakeholdersDone / data.stakeholders.length : 0;
-  const supplierProgress = suppliersDone / supplierGoal;
+  const deliveryTotal = data.deliveryGuideItems.length;
+  const deliveryProgress = deliveryTotal ? deliveryDone / deliveryTotal : 0;
+  const stakeholderProgress = stakeholderGoal ? stakeholdersDone / stakeholderGoal : 0;
+  const supplierProgress = supplierGoal ? suppliersDone / supplierGoal : 0;
   const benchmarkProgress = benchmarkDone / benchmarkGoal;
   const criticalProcessesProgress = criticalProcessesTotal ? criticalProcessesDone / criticalProcessesTotal : 0;
   const pillarProgress = data.methodologyPillars.length ? pillarsDone / data.methodologyPillars.length : 0;
@@ -2571,8 +2500,9 @@ function calculateMetrics(data: AppData) {
     handoverDone,
     coachingDone,
     deliveryDone,
-    guardiansAssigned,
+    deliveryTotal,
     stakeholdersDone,
+    stakeholderGoal,
     suppliersDone,
     supplierGoal,
     benchmarkDone,
@@ -2583,12 +2513,13 @@ function calculateMetrics(data: AppData) {
     peopleProgress,
     handoverProgress,
     coachingProgress,
+    deliveryProgress,
     stakeholderProgress,
     supplierProgress,
     benchmarkProgress,
     criticalProcessesProgress,
     pillarProgress,
-    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + criticalProcessesProgress + stakeholderProgress + supplierProgress + pillarProgress) / 8,
+    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + criticalProcessesProgress + deliveryProgress + stakeholderProgress + supplierProgress + pillarProgress) / 9,
     supplierSpend: data.suppliers.reduce((sum, item) => sum + Number(item.spend || 0), 0),
     topSupplierSpend: data.suppliers.slice(0, 20).reduce((sum, item) => sum + Number(item.spend || 0), 0),
     categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0),

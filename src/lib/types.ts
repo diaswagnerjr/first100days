@@ -56,6 +56,7 @@ export type Stakeholder = {
   nextSteps: string;
   learnings: string;
   notes: string;
+  showOnDashboard: boolean;
 };
 
 export type Supplier = {
@@ -79,6 +80,7 @@ export type Supplier = {
   interactionStatus: string;
   nextSteps: string;
   notes: string;
+  showOnDashboard: boolean;
 };
 
 export type Category = {

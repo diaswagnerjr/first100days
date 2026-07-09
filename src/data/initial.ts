@@ -129,7 +129,8 @@ export const stakeholdersSeed: Stakeholder[] = [
   opportunities: "",
   nextSteps: "Agendar conversa inicial",
   learnings: "",
-  notes: ""
+  notes: "",
+  showOnDashboard: false
 }));
 
 export const suppliersInitial: Supplier[] = suppliersSeed.map((item, index) => ({
@@ -152,7 +153,8 @@ export const suppliersInitial: Supplier[] = suppliersSeed.map((item, index) => (
   conversationDate: "",
   interactionStatus: "Nao iniciado",
   nextSteps: "",
-  notes: ""
+  notes: "",
+  showOnDashboard: false
 }));
 
 export const categoriesInitial: Category[] = categoriesSeed.map((item, index) => ({
@@ -221,7 +223,7 @@ export const handoverChecklistSeed: HandoverItem[] = [
   dueDate: "",
   links: "",
   attachments: [],
-  section: "handover",
+  section: "administrativo",
   updatedAt: ""
 }));
 
