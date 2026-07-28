@@ -14,7 +14,7 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Login com Supabase Auth
 - Dashboard executivo
 - Pessoas
-- Stakeholders
+- Stakeholders em tabela simples editavel, com ordenacao por nome/area, marcador de dashboard e exportacao PDF
 - Benchmark Mercado para conversas com 5 empresas, contatos e dimensoes comparativas
 - Fornecedores estrategicos
 - Categorias como base de spend e referencia para Pessoas/Estrutura
@@ -28,6 +28,7 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Guia de Entregas com marcos de 30, 60, 90 e 120 dias e indicadores de sucesso da gestao
 - Tema claro/escuro
 - Exportacao `.ics` para Outlook/iPhone
+- Exportacao PDF da tabela de Stakeholders
 - Atalho de WhatsApp para fornecedores
 - Anexos persistidos em itens de handover
 - Contador de acessos e alteracoes

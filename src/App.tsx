@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   Copy,
   Edit3,
+  FileDown,
   Handshake,
   LayoutDashboard,
   ListFilter,
@@ -694,7 +695,7 @@ function App() {
               onIndicator={(row) => upsertRow("successIndicators", row)}
             />
           )}
-          {activeTab === "stakeholders" && <StakeholderPanel canEdit={canEdit} rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado", showOnDashboard: false })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
+          {activeTab === "stakeholders" && <StakeholderPanel canEdit={canEdit} rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "Gerente Funcional", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado", showOnDashboard: false })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
           {activeTab === "marketBenchmark" && (
             <MarketBenchmarkPanel
               canEdit={canEdit}
@@ -2012,37 +2013,75 @@ function MarketBenchmarkPanel({
   );
 }
 
+const stakeholderRoleOptions = ["Gerente Funcional", "Gerente Executivo", "Diretor"];
+type StakeholderSort = "name" | "area";
+
 function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows: Stakeholder[]; addRow: () => void; deleteRow: (id: string) => void; onChange: (row: Stakeholder) => void; canEdit: boolean }) {
-  const [selected, setSelected] = useState(rows[0]?.id || "");
-  const row = rows.find((item) => item.id === selected) || rows[0];
-  if (!row) return null;
+  const [sortBy, setSortBy] = useState<StakeholderSort>("name");
+  const sortedRows = [...rows].sort((a, b) => {
+    const first = sortBy === "area" ? `${a.area}-${a.name}` : `${a.name}-${a.area}`;
+    const second = sortBy === "area" ? `${b.area}-${b.name}` : `${b.name}-${b.area}`;
+    return first.localeCompare(second, "pt-BR");
+  });
+  const dashboardRows = rows.filter((item) => item.showOnDashboard);
   return (
-    <Panel title="Stakeholders" action={canEdit ? <button className="btn" onClick={addRow}><Plus size={16} /> Novo stakeholder</button> : <Badge tone="warn">Somente leitura</Badge>}>
-      <CardLayout rows={rows} selected={row.id} onSelect={setSelected} renderCard={(item) => <Summary title={item.name} subtitle={`${item.area} | ${item.criticality}`} meta={item.showOnDashboard ? "Conta no dashboard" : item.conversationDate ? "Conversa registrada" : "Pendente"} />}>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Field label="Nome" value={row.name} onChange={(value) => onChange({ ...row, name: value })} />
-          <Field label="Area" value={row.area} onChange={(value) => onChange({ ...row, area: value })} />
-          <Field label="Cargo" value={row.role} onChange={(value) => onChange({ ...row, role: value })} />
-          <Select label="Criticidade" value={row.criticality} onChange={(value) => onChange({ ...row, criticality: value as Stakeholder["criticality"] })} options={["Alta", "Media", "Baixa"]} />
-          <Select label="Influencia" value={row.influence} onChange={(value) => onChange({ ...row, influence: value as Stakeholder["influence"] })} options={["Alta", "Media", "Baixa"]} />
-          <Field label="Data da conversa" type="date" value={row.conversationDate} onChange={(value) => onChange({ ...row, conversationDate: value, firstConversation: value })} />
-          <Field label="Status da interacao" value={row.interactionStatus} onChange={(value) => onChange({ ...row, interactionStatus: value })} />
-          <Field label="Principais dores" area value={row.pains} onChange={(value) => onChange({ ...row, pains: value })} />
-          <Field label="Expectativas" area value={row.expectations} onChange={(value) => onChange({ ...row, expectations: value })} />
-          <Field label="Oportunidades" area value={row.opportunities} onChange={(value) => onChange({ ...row, opportunities: value })} />
-          <Field label="Proximos passos" area value={row.nextSteps} onChange={(value) => onChange({ ...row, nextSteps: value })} />
-          <Field label="Anotacoes" area value={row.notes} onChange={(value) => onChange({ ...row, notes: value })} />
-          <label className="flex items-center gap-2 rounded-md border border-line bg-card p-3 text-sm">
-            <input className="h-4 w-4 accent-leaf" disabled={!canEdit} type="checkbox" checked={row.showOnDashboard} onChange={(event) => onChange({ ...row, showOnDashboard: event.target.checked })} />
-            Contar este stakeholder no dashboard e progresso geral
-          </label>
+    <Panel
+      title="Stakeholders"
+      action={
+        <div className="flex flex-wrap gap-2">
+          <button className="btn" onClick={() => downloadStakeholdersPdf(sortedRows)}><FileDown size={16} /> Exportar PDF</button>
+          {canEdit ? <button className="btn" onClick={addRow}><Plus size={16} /> Novo stakeholder</button> : <Badge tone="warn">Somente leitura</Badge>}
         </div>
-        <ActionBar>
-          {canEdit && <button className="btn" onClick={() => onChange(row)}>Salvar</button>}
-          <button className="btn" onClick={() => downloadIcs(`Stakeholder - ${row.name}`, row.conversationDate, row.nextSteps)}><CalendarPlus size={16} /> Exportar .ics</button>
-          {canEdit && <button className="btn" onClick={() => deleteRow(row.id)}><Trash2 size={16} /> Excluir</button>}
-        </ActionBar>
-      </CardLayout>
+      }
+    >
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Metric title="Stakeholders" value={String(rows.length)} note="registros na tabela" />
+        <Metric title="No dashboard" value={String(dashboardRows.length)} note="marcados para progresso geral" />
+        <Select label="Ordenar por" value={sortBy} onChange={(value) => setSortBy(value as StakeholderSort)} options={["name", "area"]} labels={{ name: "Nome", area: "Area" }} />
+      </div>
+      <div className="overflow-x-auto rounded-md border border-line bg-surface">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="border-b border-line bg-card text-xs uppercase text-muted">
+            <tr>
+              <th className="w-[20%] p-3">Nome</th>
+              <th className="w-[18%] p-3">Area</th>
+              <th className="w-[18%] p-3">Cargo</th>
+              <th className="w-[32%] p-3">Anotacoes</th>
+              <th className="w-[8%] p-3 text-center">Dashboard</th>
+              {canEdit && <th className="w-[4%] p-3 text-right">Excluir</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map((row) => (
+              <tr key={row.id} className="border-b border-line/70 last:border-b-0">
+                <td className="p-2 align-top">
+                  <input className="field" disabled={!canEdit} value={row.name || ""} onChange={(event) => onChange({ ...row, name: event.target.value })} />
+                </td>
+                <td className="p-2 align-top">
+                  <input className="field" disabled={!canEdit} value={row.area || ""} onChange={(event) => onChange({ ...row, area: event.target.value })} />
+                </td>
+                <td className="p-2 align-top">
+                  <select className="field" disabled={!canEdit} value={stakeholderRoleOptions.includes(row.role) ? row.role : ""} onChange={(event) => onChange({ ...row, role: event.target.value })}>
+                    <option value="">Selecionar</option>
+                    {stakeholderRoleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+                  </select>
+                </td>
+                <td className="p-2 align-top">
+                  <textarea className="field min-h-20" disabled={!canEdit} value={row.notes || ""} onChange={(event) => onChange({ ...row, notes: event.target.value })} />
+                </td>
+                <td className="p-2 text-center align-top">
+                  <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit} type="checkbox" checked={row.showOnDashboard} onChange={(event) => onChange({ ...row, showOnDashboard: event.target.checked })} />
+                </td>
+                {canEdit && (
+                  <td className="p-2 text-right align-top">
+                    <button className="btn" onClick={() => { if (window.confirm("Excluir este stakeholder permanentemente?")) deleteRow(row.id); }}><Trash2 size={16} /></button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Panel>
   );
 }
@@ -2593,6 +2632,89 @@ function downloadIcs(title: string, date: string, description: string) {
   link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.ics`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadStakeholdersPdf(rows: Stakeholder[]) {
+  const lines = rows.flatMap((row, index) => [
+    `${index + 1}. ${row.name || "Sem nome"}`,
+    `Area: ${row.area || "Nao informada"} | Cargo: ${row.role || "Nao informado"} | Dashboard: ${row.showOnDashboard ? "Sim" : "Nao"}`,
+    `Anotacoes: ${row.notes || "Sem anotacoes"}`,
+    ""
+  ]);
+  downloadSimplePdf("stakeholders-first100days.pdf", "Stakeholders - First100Days", lines);
+}
+
+function downloadSimplePdf(fileName: string, title: string, lines: string[]) {
+  const pageLines = wrapPdfLines([title, `Gerado em ${new Date().toLocaleDateString("pt-BR")}`, "", ...lines], 92);
+  const pages: string[][] = [];
+  for (let index = 0; index < pageLines.length; index += 42) {
+    pages.push(pageLines.slice(index, index + 42));
+  }
+  const objects: string[] = [];
+  const pageRefs: number[] = [];
+  pages.forEach((page, index) => {
+    const pageObject = 4 + index * 2;
+    const contentObject = pageObject + 1;
+    pageRefs.push(pageObject);
+    const content = [
+      "BT",
+      "/F1 11 Tf",
+      "50 790 Td",
+      "14 TL",
+      ...page.map((line) => `(${escapePdfText(line)}) Tj T*`),
+      "ET"
+    ].join("\n");
+    objects[pageObject] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObject} 0 R >>`;
+    objects[contentObject] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  });
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${pageRefs.map((ref) => `${ref} 0 R`).join(" ")}] /Count ${pageRefs.length} >>`;
+  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+  const orderedObjects = objects.map((body, index) => ({ index, body })).filter((object) => object.index > 0 && object.body);
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [0];
+  orderedObjects.forEach((object) => {
+    offsets[object.index] = pdf.length;
+    pdf += `${object.index} 0 obj\n${object.body}\nendobj\n`;
+  });
+  const xrefStart = pdf.length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let index = 1; index < objects.length; index += 1) {
+    pdf += `${String(offsets[index] || 0).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+  const blob = new Blob([pdf], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function wrapPdfLines(lines: string[], maxLength: number) {
+  return lines.flatMap((line) => {
+    const clean = normalizePdfText(line);
+    if (!clean) return [""];
+    const wrapped: string[] = [];
+    let remaining = clean;
+    while (remaining.length > maxLength) {
+      const cut = remaining.lastIndexOf(" ", maxLength);
+      const position = cut > 20 ? cut : maxLength;
+      wrapped.push(remaining.slice(0, position));
+      remaining = remaining.slice(position).trim();
+    }
+    wrapped.push(remaining);
+    return wrapped;
+  });
+}
+
+function normalizePdfText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "");
+}
+
+function escapePdfText(value: string) {
+  return normalizePdfText(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
 function escapeIcs(value: string) {
