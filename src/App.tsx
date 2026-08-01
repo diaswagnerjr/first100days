@@ -141,6 +141,7 @@ const dateFields = new Set([
   "next_conversation",
   "first_conversation",
   "conversation_date",
+  "agenda_date",
   "next_meeting",
   "first_interaction",
   "next_interaction",
@@ -197,6 +198,7 @@ const fromSnake = <T,>(row: Record<string, unknown>) => {
 
 const asArray = (value: unknown) => (Array.isArray(value) ? value.map(String) : typeof value === "string" && value ? value.split(",").map((item) => item.trim()) : []);
 const todayIso = () => new Date().toISOString();
+const todayDate = () => new Date().toISOString().slice(0, 10);
 const joinText = (...values: Array<string | undefined>) => values.map((value) => value?.trim()).filter(Boolean).join("\n\n");
 const normalizeLookup = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
 
@@ -249,8 +251,16 @@ const normalizePerson = (row: Person): Person => ({
   futureLeadershipGap: row.futureLeadershipGap || "",
   futureLeadershipDecision: row.futureLeadershipDecision || ""
 });
-const normalizeStakeholder = (row: Stakeholder): Stakeholder => ({ ...stakeholdersSeed[0], ...row, conversationDate: row.conversationDate || row.firstConversation || "", interactionStatus: row.interactionStatus || "Nao iniciado", showOnDashboard: row.showOnDashboard === true });
-const normalizeSupplier = (row: Supplier): Supplier => ({ ...suppliersInitial[0], ...row, conversationDate: row.conversationDate || row.firstInteraction || "", interactionStatus: row.interactionStatus || row.relationshipStatus || "Nao iniciado", nextSteps: row.nextSteps || row.actionPlan || "", showOnDashboard: row.showOnDashboard === true });
+const normalizeStakeholder = (row: Stakeholder): Stakeholder => {
+  const agendaDate = row.agendaDate || row.nextConversation || "";
+  const conversationDate = row.conversationDate || row.firstConversation || "";
+  return { ...stakeholdersSeed[0], ...row, agendaDate, conversationDate, interactionStatus: row.interactionStatus || "Nao iniciado", showOnDashboard: row.showOnDashboard === true, agendaScheduled: row.agendaScheduled === true || Boolean(agendaDate), conversationDone: row.conversationDone === true || Boolean(conversationDate) };
+};
+const normalizeSupplier = (row: Supplier): Supplier => {
+  const agendaDate = row.agendaDate || row.nextInteraction || "";
+  const conversationDate = row.conversationDate || row.firstInteraction || "";
+  return { ...suppliersInitial[0], ...row, agendaDate, conversationDate, interactionStatus: row.interactionStatus || row.relationshipStatus || "Nao iniciado", nextSteps: row.nextSteps || row.actionPlan || "", showOnDashboard: row.showOnDashboard === true, agendaScheduled: row.agendaScheduled === true || Boolean(agendaDate), conversationDone: row.conversationDone === true || Boolean(conversationDate) };
+};
 const normalizePillar = (row: MethodologyPillar): MethodologyPillar => ({ ...(methodologyPillarsSeed.find((item) => item.name === row.name) ?? methodologyPillarsSeed[0]), ...row });
 const normalizeHandover = (row: HandoverItem): HandoverItem => ({ ...handoverChecklistSeed[0], ...row, cluster: row.cluster || handoverCluster(row.item), attachments: Array.isArray(row.attachments) ? row.attachments : [], section: "administrativo" });
 const normalizeCoaching = (row: CoachingSession): CoachingSession => ({ ...coachingSessionsSeed[0], ...row, sessionNumber: Number(row.sessionNumber || 1), actionStatus: row.actionStatus || "Aberta" });
@@ -705,7 +715,7 @@ function App() {
               onChange={(row) => upsertRow("marketBenchmarks", row)}
             />
           )}
-          {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} onChange={(row) => upsertRow("suppliers", row)} />}
+          {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} addSupplier={() => addRow("suppliers", { name: "Novo fornecedor", category: "", spend: 0, criticality: "Media", relationshipStatus: "Mapear", interactionStatus: "Nao iniciado", showOnDashboard: false, agendaScheduled: false, agendaDate: "", conversationDone: false })} deleteSupplier={(id) => deleteRow("suppliers", id)} onChange={(row) => upsertRow("suppliers", row)} />}
         </main>
       </div>
     </Shell>
@@ -2016,69 +2026,143 @@ function MarketBenchmarkPanel({
 const stakeholderRoleOptions = ["Gerente Funcional", "Gerente Executivo", "Diretor"];
 type StakeholderSort = "name" | "area";
 
-function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows: Stakeholder[]; addRow: () => void; deleteRow: (id: string) => void; onChange: (row: Stakeholder) => void; canEdit: boolean }) {
+function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows: Stakeholder[]; addRow: () => void | Promise<string>; deleteRow: (id: string) => void; onChange: (row: Stakeholder) => void | Promise<void>; canEdit: boolean }) {
   const [sortBy, setSortBy] = useState<StakeholderSort>("name");
-  const sortedRows = [...rows].sort((a, b) => {
+  const [draftRows, setDraftRows] = useState(rows);
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+  const [savedId, setSavedId] = useState("");
+  useEffect(() => {
+    setDraftRows((current) => {
+      const draftsById = new Map(current.map((row) => [row.id, row]));
+      return rows.map((row) => editingIds.has(row.id) ? draftsById.get(row.id) || row : row);
+    });
+  }, [rows, editingIds]);
+  const sortedRows = [...draftRows].sort((a, b) => {
     const first = sortBy === "area" ? `${a.area}-${a.name}` : `${a.name}-${a.area}`;
     const second = sortBy === "area" ? `${b.area}-${b.name}` : `${b.name}-${b.area}`;
     return first.localeCompare(second, "pt-BR");
   });
-  const dashboardRows = rows.filter((item) => item.showOnDashboard);
+  const dashboardRows = draftRows.filter((item) => item.showOnDashboard);
+  const updateDraft = (next: Stakeholder) => {
+    setDraftRows((current) => current.map((row) => row.id === next.id ? next : row));
+    setSavedId("");
+  };
+  const startEdit = (id: string) => {
+    setEditingIds((current) => new Set([...current, id]));
+    setSavedId("");
+  };
+  const cancelRow = (id: string) => {
+    const original = rows.find((row) => row.id === id);
+    if (original) setDraftRows((current) => current.map((row) => row.id === id ? original : row));
+    setEditingIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    setSavedId("");
+  };
+  const saveRow = async (row: Stakeholder) => {
+    const next = {
+      ...row,
+      nextConversation: row.agendaScheduled ? row.agendaDate : "",
+      interactionStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Nao iniciado",
+      conversationDate: row.conversationDone ? (row.conversationDate || row.agendaDate || todayDate()) : "",
+      firstConversation: row.conversationDone ? (row.firstConversation || row.conversationDate || row.agendaDate || todayDate()) : ""
+    };
+    await onChange(next);
+    setEditingIds((current) => {
+      const updated = new Set(current);
+      updated.delete(row.id);
+      return updated;
+    });
+    setSavedId(row.id);
+  };
+  const createStakeholder = async () => {
+    const id = await addRow();
+    if (id) startEdit(id);
+  };
   return (
     <Panel
       title="Stakeholders"
       action={
         <div className="flex flex-wrap gap-2">
           <button className="btn" onClick={() => downloadStakeholdersPdf(sortedRows)}><FileDown size={16} /> Exportar PDF</button>
-          {canEdit ? <button className="btn" onClick={addRow}><Plus size={16} /> Novo stakeholder</button> : <Badge tone="warn">Somente leitura</Badge>}
+          {canEdit ? <button className="btn" onClick={createStakeholder}><Plus size={16} /> Novo stakeholder</button> : <Badge tone="warn">Somente leitura</Badge>}
         </div>
       }
     >
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Metric title="Stakeholders" value={String(rows.length)} note="registros na tabela" />
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        <Metric title="Stakeholders" value={String(draftRows.length)} note="registros na tabela" />
         <Metric title="No dashboard" value={String(dashboardRows.length)} note="marcados para progresso geral" />
+        <Metric title="Realizados" value={String(dashboardRows.filter((item) => item.conversationDone).length)} note="1:1 concluidos no dashboard" />
         <Select label="Ordenar por" value={sortBy} onChange={(value) => setSortBy(value as StakeholderSort)} options={["name", "area"]} labels={{ name: "Nome", area: "Area" }} />
       </div>
       <div className="overflow-x-auto rounded-md border border-line bg-surface">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[1180px] text-left text-sm">
           <thead className="border-b border-line bg-card text-xs uppercase text-muted">
             <tr>
-              <th className="w-[20%] p-3">Nome</th>
-              <th className="w-[18%] p-3">Area</th>
-              <th className="w-[18%] p-3">Cargo</th>
-              <th className="w-[32%] p-3">Anotacoes</th>
-              <th className="w-[8%] p-3 text-center">Dashboard</th>
-              {canEdit && <th className="w-[4%] p-3 text-right">Excluir</th>}
+              <th className="w-[17%] p-3">Nome</th>
+              <th className="w-[14%] p-3">Area</th>
+              <th className="w-[14%] p-3">Cargo</th>
+              <th className="w-[22%] p-3">Anotacoes</th>
+              <th className="w-[7%] p-3 text-center">Dashboard</th>
+              <th className="w-[7%] p-3 text-center">Agenda</th>
+              <th className="w-[11%] p-3">Data agenda</th>
+              <th className="w-[7%] p-3 text-center">Realizado</th>
+              {canEdit && <th className="w-[11%] p-3 text-right">Acoes</th>}
             </tr>
           </thead>
           <tbody>
-            {sortedRows.map((row) => (
-              <tr key={row.id} className="border-b border-line/70 last:border-b-0">
-                <td className="p-2 align-top">
-                  <input className="field" disabled={!canEdit} value={row.name || ""} onChange={(event) => onChange({ ...row, name: event.target.value })} />
-                </td>
-                <td className="p-2 align-top">
-                  <input className="field" disabled={!canEdit} value={row.area || ""} onChange={(event) => onChange({ ...row, area: event.target.value })} />
-                </td>
-                <td className="p-2 align-top">
-                  <select className="field" disabled={!canEdit} value={stakeholderRoleOptions.includes(row.role) ? row.role : ""} onChange={(event) => onChange({ ...row, role: event.target.value })}>
-                    <option value="">Selecionar</option>
-                    {stakeholderRoleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
-                  </select>
-                </td>
-                <td className="p-2 align-top">
-                  <textarea className="field min-h-20" disabled={!canEdit} value={row.notes || ""} onChange={(event) => onChange({ ...row, notes: event.target.value })} />
-                </td>
-                <td className="p-2 text-center align-top">
-                  <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit} type="checkbox" checked={row.showOnDashboard} onChange={(event) => onChange({ ...row, showOnDashboard: event.target.checked })} />
-                </td>
-                {canEdit && (
-                  <td className="p-2 text-right align-top">
-                    <button className="btn" onClick={() => { if (window.confirm("Excluir este stakeholder permanentemente?")) deleteRow(row.id); }}><Trash2 size={16} /></button>
+            {sortedRows.map((row) => {
+              const editing = editingIds.has(row.id);
+              return (
+                <tr key={row.id} className="border-b border-line/70 last:border-b-0">
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing} value={row.name || ""} onChange={(event) => updateDraft({ ...row, name: event.target.value })} />
                   </td>
-                )}
-              </tr>
-            ))}
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing} value={row.area || ""} onChange={(event) => updateDraft({ ...row, area: event.target.value })} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <select className="field" disabled={!canEdit || !editing} value={stakeholderRoleOptions.includes(row.role) ? row.role : ""} onChange={(event) => updateDraft({ ...row, role: event.target.value })}>
+                      <option value="">Selecionar</option>
+                      {stakeholderRoleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+                    </select>
+                  </td>
+                  <td className="p-2 align-top">
+                    <textarea className="field min-h-20" disabled={!canEdit || !editing} value={row.notes || ""} onChange={(event) => updateDraft({ ...row, notes: event.target.value })} />
+                  </td>
+                  <td className="p-2 text-center align-top">
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.showOnDashboard} onChange={(event) => updateDraft({ ...row, showOnDashboard: event.target.checked })} />
+                  </td>
+                  <td className="p-2 text-center align-top">
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked, agendaDate: event.target.checked ? row.agendaDate : "" })} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing || !row.agendaScheduled} type="date" value={row.agendaDate || ""} onChange={(event) => updateDraft({ ...row, agendaDate: event.target.value, agendaScheduled: Boolean(event.target.value) || row.agendaScheduled })} />
+                  </td>
+                  <td className="p-2 text-center align-top">
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.conversationDone} onChange={(event) => updateDraft({ ...row, conversationDone: event.target.checked })} />
+                  </td>
+                  {canEdit && (
+                    <td className="p-2 text-right align-top">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {!editing ? (
+                          <button className="btn" onClick={() => startEdit(row.id)}><Edit3 size={16} /> Editar</button>
+                        ) : (
+                          <>
+                            <button className="btn" onClick={() => saveRow(row)}><Save size={16} /> Salvar</button>
+                            <button className="btn" onClick={() => cancelRow(row.id)}>Cancelar</button>
+                          </>
+                        )}
+                        <button className="btn" disabled={editing} onClick={() => { if (window.confirm("Excluir este stakeholder permanentemente?")) deleteRow(row.id); }}><Trash2 size={16} /></button>
+                      </div>
+                      {savedId === row.id && <span className="mt-2 inline-block text-xs font-semibold text-leaf">Salvo</span>}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -2086,74 +2170,181 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows
   );
 }
 
-function SupplierPanel({ rows, onChange, canEdit }: { rows: Supplier[]; onChange: (row: Supplier) => void; canEdit: boolean }) {
+type SupplierSort = "name" | "spend";
+
+function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {
   const [query, setQuery] = useState("");
   const sourceRows = rows.length ? rows : suppliersInitial;
-  const visible = sourceRows.filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.relatedArea.toLowerCase().includes(query.toLowerCase()));
-  const [selected, setSelected] = useState(sourceRows[0]?.id || "");
-  const row = sourceRows.find((item) => item.id === selected) || visible[0] || sourceRows[0];
-  const touchedSuppliers = sourceRows.filter(isSupplierScoped);
-  const [draft, setDraft] = useState(row);
-  const [editing, setEditing] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [sortBy, setSortBy] = useState<SupplierSort>("spend");
+  const [draftRows, setDraftRows] = useState(sourceRows);
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+  const [savedId, setSavedId] = useState("");
   useEffect(() => {
-    if (row) {
-      setDraft(row);
-      setEditing(false);
-      setSaved(false);
-    }
-  }, [row?.id]);
-  if (!row) return null;
-  const current = draft || row;
-  const save = () => {
-    onChange(current);
-    setEditing(false);
-    setSaved(true);
+    setDraftRows((current) => {
+      const draftsById = new Map(current.map((row) => [row.id, row]));
+      return sourceRows.map((row) => editingIds.has(row.id) ? draftsById.get(row.id) || row : row);
+    });
+  }, [sourceRows, editingIds]);
+  const visible = draftRows
+    .filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase()) || row.contact.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => sortBy === "spend" ? Number(b.spend || 0) - Number(a.spend || 0) : a.name.localeCompare(b.name, "pt-BR"));
+  const dashboardRows = draftRows.filter((item) => item.showOnDashboard);
+  const updateDraft = (next: Supplier) => {
+    setDraftRows((current) => current.map((row) => row.id === next.id ? next : row));
+    setSavedId("");
   };
-  const clear = () => {
-    if (!window.confirm("Tem certeza que deseja limpar tudo desta ficha de fornecedor? Nome, categoria e spend serao preservados.")) return;
-    setDraft({ ...current, relatedArea: "", criticality: "Media", contact: "", phone: "", email: "", firstInteraction: "", nextInteraction: "", relationshipStatus: "Mapear", meetings: 0, opportunities: "", risks: "", actionPlan: "", conversationDate: "", interactionStatus: "Nao iniciado", nextSteps: "", notes: "", showOnDashboard: false });
-    setSaved(false);
+  const startEdit = (id: string) => {
+    setEditingIds((current) => new Set([...current, id]));
+    setSavedId("");
+  };
+  const cancelRow = (id: string) => {
+    const original = sourceRows.find((row) => row.id === id);
+    if (original) setDraftRows((current) => current.map((row) => row.id === id ? original : row));
+    setEditingIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    setSavedId("");
+  };
+  const saveRow = async (row: Supplier) => {
+    const next = {
+      ...row,
+      nextInteraction: row.agendaScheduled ? row.agendaDate : "",
+      relationshipStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Mapear",
+      interactionStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Nao iniciado",
+      conversationDate: row.conversationDone ? (row.conversationDate || row.agendaDate || todayDate()) : "",
+      firstInteraction: row.conversationDone ? (row.firstInteraction || row.conversationDate || row.agendaDate || todayDate()) : ""
+    };
+    await onChange(next);
+    setEditingIds((current) => {
+      const updated = new Set(current);
+      updated.delete(row.id);
+      return updated;
+    });
+    setSavedId(row.id);
+  };
+  const createSupplier = async () => {
+    const id = await addSupplier();
+    if (id) startEdit(id);
   };
   return (
-    <Panel title="Fornecedores">
-      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="space-y-3">
-          <SearchBox value={query} onChange={setQuery} placeholder="Buscar fornecedor ou area" />
-          <Select label="Selecionar fornecedor" value={row.id} onChange={setSelected} options={visible.map((item) => item.id)} labels={Object.fromEntries(visible.map((item) => [item.id, `${item.name} | ${money(item.spend)}`]))} />
-          <Panel title="Top 20 fornecedores">
-            <SupplierRows rows={sourceRows.slice(0, 20)} onSelect={setSelected} selected={row.id} />
-          </Panel>
-          <Panel title="Fornecedores preenchidos para falar">
-            {touchedSuppliers.length ? <SupplierRows rows={touchedSuppliers} onSelect={setSelected} selected={row.id} /> : <p className="text-sm text-muted">Nenhum fornecedor preenchido ainda.</p>}
-          </Panel>
+    <Panel
+      title="Fornecedores"
+      action={
+        <div className="flex flex-wrap gap-2">
+          <button className="btn" onClick={() => downloadSuppliersPdf(visible)}><FileDown size={16} /> Exportar PDF</button>
+          {canEdit ? <button className="btn" onClick={createSupplier}><Plus size={16} /> Novo fornecedor</button> : <Badge tone="warn">Somente leitura</Badge>}
         </div>
-        <Card>
-          <div className="grid gap-3 lg:grid-cols-2">
-            <ReadOnly label="Fornecedor" value={current.name} />
-            <ReadOnly label="Spend" value={money(current.spend)} />
-            <label className="flex items-center gap-2 rounded-md border border-line bg-card p-3 text-sm lg:col-span-2">
-              <input className="h-4 w-4 accent-leaf" disabled={!editing} type="checkbox" checked={current.showOnDashboard} onChange={(event) => setDraft({ ...current, showOnDashboard: event.target.checked })} />
-              Contar este fornecedor no dashboard e progresso geral
-            </label>
-            <Select disabled={!editing} label="Area relacionada" value={current.relatedArea} onChange={(value) => setDraft({ ...current, relatedArea: value })} options={["", "RH", "TI", "Juridico", "Marketing", "Financas", "Facilities", "Operacoes"]} />
-            <Select disabled={!editing} label="Criticidade" value={current.criticality} onChange={(value) => setDraft({ ...current, criticality: value as Supplier["criticality"] })} options={["Alta", "Media", "Baixa"]} />
-            <Field disabled={!editing} label="Data da conversa" type="date" value={current.conversationDate} onChange={(value) => setDraft({ ...current, conversationDate: value, firstInteraction: value })} />
-            <Field disabled={!editing} label="Status da interacao" value={current.interactionStatus} onChange={(value) => setDraft({ ...current, interactionStatus: value, relationshipStatus: value })} />
-            <Field disabled={!editing} label="Contato principal" value={current.contact} onChange={(value) => setDraft({ ...current, contact: value })} />
-            <Field disabled={!editing} label="Telefone" value={current.phone} onChange={(value) => setDraft({ ...current, phone: value })} />
-            <Field disabled={!editing} label="E-mail" value={current.email} onChange={(value) => setDraft({ ...current, email: value })} />
-            <Field disabled={!editing} label="Oportunidades" area value={current.opportunities} onChange={(value) => setDraft({ ...current, opportunities: value })} />
-            <Field disabled={!editing} label="Riscos" area value={current.risks} onChange={(value) => setDraft({ ...current, risks: value })} />
-            <Field disabled={!editing} label="Proximos passos" area value={current.nextSteps} onChange={(value) => setDraft({ ...current, nextSteps: value, actionPlan: value })} />
-            <Field disabled={!editing} label="Anotacoes" area value={current.notes} onChange={(value) => setDraft({ ...current, notes: value })} />
-          </div>
-          <EditActions canEdit={canEdit} editing={editing} saved={saved} onEdit={() => setEditing(true)} onCancel={() => { setDraft(row); setEditing(false); }} onSave={save} onClear={clear} />
-          <ActionBar>
-            <button className="btn" onClick={() => openWhatsApp(current.phone, `Ola, aqui e Wagner da Suzano. Podemos falar sobre ${current.name}?`)}>WhatsApp</button>
-            <button className="btn" onClick={() => downloadIcs(`Fornecedor - ${current.name}`, current.conversationDate, current.nextSteps || current.notes)}><CalendarPlus size={16} /> Exportar .ics</button>
-          </ActionBar>
-        </Card>
+      }
+    >
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        <Metric title="Fornecedores" value={String(draftRows.length)} note="base carregada" />
+        <Metric title="No dashboard" value={String(dashboardRows.length)} note="marcados para progresso geral" />
+        <Metric title="Realizados" value={String(dashboardRows.filter((item) => item.conversationDone).length)} note="bate-papos concluidos" />
+        <Select label="Ordenar por" value={sortBy} onChange={(value) => setSortBy(value as SupplierSort)} options={["spend", "name"]} labels={{ spend: "Spend", name: "Nome" }} />
+      </div>
+      <div className="mb-4 max-w-xl">
+        <SearchBox value={query} onChange={setQuery} placeholder="Buscar fornecedor, categoria ou contato" />
+      </div>
+      <div className="overflow-x-auto rounded-md border border-line bg-surface">
+        <table className="w-full min-w-[1320px] text-left text-sm">
+          <thead className="border-b border-line bg-card text-xs uppercase text-muted">
+            <tr>
+              <th className="w-[16%] p-3">Fornecedor</th>
+              <th className="w-[10%] p-3">Spend</th>
+              <th className="w-[15%] p-3">Pessoa</th>
+              <th className="w-[12%] p-3">Cargo</th>
+              <th className="w-[20%] p-3">Anotacoes</th>
+              <th className="w-[7%] p-3 text-center">Dashboard</th>
+              <th className="w-[7%] p-3 text-center">Agenda</th>
+              <th className="w-[10%] p-3">Data agenda</th>
+              <th className="w-[7%] p-3 text-center">Realizado</th>
+              {canEdit && <th className="w-[11%] p-3 text-right">Acoes</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.slice(0, 120).map((row) => {
+              const editing = editingIds.has(row.id);
+              return (
+                <tr key={row.id} className="border-b border-line/70 last:border-b-0">
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing} value={row.name || ""} onChange={(event) => updateDraft({ ...row, name: event.target.value })} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <ReadOnly label="" value={money(row.spend)} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing} value={row.contact || ""} onChange={(event) => updateDraft({ ...row, contact: event.target.value })} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing} value={row.contactRole || ""} onChange={(event) => updateDraft({ ...row, contactRole: event.target.value })} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <textarea className="field min-h-20" disabled={!canEdit || !editing} value={row.notes || ""} onChange={(event) => updateDraft({ ...row, notes: event.target.value })} />
+                  </td>
+                  <td className="p-2 text-center align-top">
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.showOnDashboard} onChange={(event) => updateDraft({ ...row, showOnDashboard: event.target.checked })} />
+                  </td>
+                  <td className="p-2 text-center align-top">
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked, agendaDate: event.target.checked ? row.agendaDate : "" })} />
+                  </td>
+                  <td className="p-2 align-top">
+                    <input className="field" disabled={!canEdit || !editing || !row.agendaScheduled} type="date" value={row.agendaDate || ""} onChange={(event) => updateDraft({ ...row, agendaDate: event.target.value, agendaScheduled: Boolean(event.target.value) || row.agendaScheduled })} />
+                  </td>
+                  <td className="p-2 text-center align-top">
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.conversationDone} onChange={(event) => updateDraft({ ...row, conversationDone: event.target.checked })} />
+                  </td>
+                  {canEdit && (
+                    <td className="p-2 text-right align-top">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {!editing ? (
+                          <button className="btn" onClick={() => startEdit(row.id)}><Edit3 size={16} /> Editar</button>
+                        ) : (
+                          <>
+                            <button className="btn" onClick={() => saveRow(row)}><Save size={16} /> Salvar</button>
+                            <button className="btn" onClick={() => cancelRow(row.id)}>Cancelar</button>
+                          </>
+                        )}
+                        <button className="btn" disabled={editing} onClick={() => { if (window.confirm("Excluir este fornecedor permanentemente?")) deleteSupplier(row.id); }}><Trash2 size={16} /></button>
+                      </div>
+                      {savedId === row.id && <span className="mt-2 inline-block text-xs font-semibold text-leaf">Salvo</span>}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {visible.length > 120 && <p className="p-3 text-sm text-muted">Mostrando 120 de {visible.length} fornecedores. Use a busca para refinar.</p>}
+      </div>
+      <div className="mt-5 rounded-md border border-line bg-surface p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold">Fornecedores x spend</h3>
+          <Badge>{draftRows.filter((item) => item.conversationDone).length} bate-papos realizados</Badge>
+        </div>
+        <div className="max-h-80 overflow-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="sticky top-0 border-b border-line bg-card text-xs uppercase text-muted">
+              <tr>
+                <th className="p-2">Fornecedor</th>
+                <th className="p-2">Categoria</th>
+                <th className="p-2 text-right">Spend</th>
+                <th className="p-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((row) => (
+                <tr key={`${row.id}-spend`} className="border-b border-line/70">
+                  <td className="p-2 font-medium">{row.name}</td>
+                  <td className="p-2 text-muted">{row.category || "Sem categoria"}</td>
+                  <td className="p-2 text-right font-semibold">{money(row.spend)}</td>
+                  <td className="p-2">{row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Pendente"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Panel>
   );
@@ -2513,7 +2704,7 @@ function calculateMetrics(data: AppData) {
   const deliveryDone = data.deliveryGuideItems.filter((item) => item.status === "Concluido").length;
   const dashboardStakeholders = data.stakeholders.filter((item) => item.showOnDashboard);
   const stakeholderGoal = dashboardStakeholders.length;
-  const stakeholdersDone = dashboardStakeholders.filter((item) => item.conversationDate || item.firstConversation).length;
+  const stakeholdersDone = dashboardStakeholders.filter((item) => item.conversationDone).length;
   const dashboardSuppliers = data.suppliers.filter((item) => item.showOnDashboard);
   const supplierGoal = dashboardSuppliers.length;
   const suppliersDone = dashboardSuppliers.filter(isSupplierDone).length;
@@ -2570,18 +2761,21 @@ function calculateMetrics(data: AppData) {
 function isSupplierScoped(item: Supplier) {
   return Boolean(
     item.contact
+      || item.contactRole
       || item.phone
       || item.email
       || item.notes
       || item.nextSteps
       || item.opportunities
       || item.risks
+      || item.agendaScheduled
+      || item.conversationDone
       || (item.interactionStatus && item.interactionStatus !== "Nao iniciado")
   );
 }
 
 function isSupplierDone(item: Supplier) {
-  return Boolean(item.conversationDate || item.firstInteraction);
+  return Boolean(item.conversationDone);
 }
 
 function isBenchmarkDone(item: MarketBenchmark) {
@@ -2638,10 +2832,22 @@ function downloadStakeholdersPdf(rows: Stakeholder[]) {
   const lines = rows.flatMap((row, index) => [
     `${index + 1}. ${row.name || "Sem nome"}`,
     `Area: ${row.area || "Nao informada"} | Cargo: ${row.role || "Nao informado"} | Dashboard: ${row.showOnDashboard ? "Sim" : "Nao"}`,
+    `Agenda: ${row.agendaScheduled ? "Sim" : "Nao"} | Data: ${row.agendaDate || "Nao marcada"} | Realizado: ${row.conversationDone ? "Sim" : "Nao"}`,
     `Anotacoes: ${row.notes || "Sem anotacoes"}`,
     ""
   ]);
   downloadSimplePdf("stakeholders-first100days.pdf", "Stakeholders - First100Days", lines);
+}
+
+function downloadSuppliersPdf(rows: Supplier[]) {
+  const lines = rows.flatMap((row, index) => [
+    `${index + 1}. ${row.name || "Sem fornecedor"} | Spend: ${money(row.spend)}`,
+    `Pessoa: ${row.contact || "Nao informada"} | Cargo: ${row.contactRole || "Nao informado"} | Dashboard: ${row.showOnDashboard ? "Sim" : "Nao"}`,
+    `Agenda: ${row.agendaScheduled ? "Sim" : "Nao"} | Data: ${row.agendaDate || "Nao marcada"} | Realizado: ${row.conversationDone ? "Sim" : "Nao"}`,
+    `Anotacoes: ${row.notes || "Sem anotacoes"}`,
+    ""
+  ]);
+  downloadSimplePdf("fornecedores-first100days.pdf", "Fornecedores - First100Days", lines);
 }
 
 function downloadSimplePdf(fileName: string, title: string, lines: string[]) {

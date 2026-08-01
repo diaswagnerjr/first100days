@@ -14,9 +14,9 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Login com Supabase Auth
 - Dashboard executivo
 - Pessoas
-- Stakeholders em tabela simples editavel, com ordenacao por nome/area, marcador de dashboard e exportacao PDF
+- Stakeholders em tabela simples editavel por linha, com agenda, data, realizado, marcador de dashboard e exportacao PDF
 - Benchmark Mercado para conversas com 5 empresas, contatos e dimensoes comparativas
-- Fornecedores estrategicos
+- Fornecedores estrategicos em tabela editavel por linha, com pessoa contatada, cargo, agenda, realizado, marcador de dashboard, spend de referencia e exportacao PDF
 - Categorias como base de spend e referencia para Pessoas/Estrutura
 - Pilares metodologicos dos 100 dias
 - Handover Thais
@@ -85,8 +85,9 @@ Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo 
 10. Execute o SQL incremental em `supabase/migrations/20260701120000_market_benchmark.sql`.
 11. Execute o SQL incremental em `supabase/migrations/20260706120000_critical_processes.sql`.
 12. Execute o SQL incremental em `supabase/migrations/20260709120000_dashboard_handover_adjustments.sql`.
-13. Confira se Auth esta habilitado com e-mail/senha.
-14. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
+13. Execute o SQL incremental em `supabase/migrations/20260801120000_stakeholder_supplier_agenda_status.sql`.
+14. Confira se Auth esta habilitado com e-mail/senha.
+15. Crie ou confirme o usuario visualizador `wagnerdj@suzano.com.br` com senha `123456!` no Auth, caso o projeto exija confirmacao de e-mail.
 
 As tabelas usam `user_id`, RLS habilitado e policies que permitem ao usuario autenticado acessar apenas os proprios registros.
 
@@ -109,7 +110,7 @@ Notas funcionais:
 
 - A aba `Categorias` nao aparece no menu principal, mas a tabela `categories` continua sendo usada no dashboard, em Pessoas e na simulacao de estrutura.
 - O progresso geral considera Pessoas, Handover Thais, Coaching, Benchmark Mercado, Processos Criticos, Entregas cadastradas, Stakeholders marcados para dashboard, Fornecedores marcados para dashboard e Pilares dos 100 dias.
-- Stakeholders e Fornecedores entram no dashboard/progresso somente quando o marcador `Contar no dashboard e progresso geral` estiver habilitado. Se nenhum estiver marcado, o dashboard exibe `0/0`.
+- Stakeholders e Fornecedores entram no dashboard/progresso somente quando o marcador de dashboard estiver habilitado; dentro desse grupo, so contam como concluidos quando `Realizado` estiver marcado. Se nenhum estiver marcado para dashboard, o indicador exibe `0/0`.
 - O modo claro/escuro usa upsert por `user_id` em `user_preferences`, evitando duplicidade de preferencia.
 - Anexos do handover sao salvos em `handover_checklist.attachments` como JSON para permitir download posterior.
 - Se fornecedores ou categorias estiverem vazios para um usuario existente, o app repopula essas tabelas a partir das planilhas no proximo carregamento.
@@ -121,6 +122,7 @@ Notas funcionais:
 - A migration `20260701120000_market_benchmark.sql` cria a tabela `market_benchmarks`, com RLS, seed incremental de 5 empresas e nenhum overwrite dos dados existentes.
 - A migration `20260706120000_critical_processes.sql` cria a tabela `critical_processes`, com RLS, seed incremental dos processos iniciais e conclusao pelo checklist de acoes no SCRUM.
 - A migration `20260709120000_dashboard_handover_adjustments.sql` adiciona os marcadores de dashboard em Stakeholders e Fornecedores e consolida os itens do Handover Thais no Checklist unico, preservando registros existentes.
+- A migration `20260801120000_stakeholder_supplier_agenda_status.sql` adiciona agenda, data da agenda e realizado para Stakeholders e Fornecedores, alem de cargo do contato em Fornecedores, com backfill a partir das datas historicas existentes.
 
 ## GitHub Pages
 

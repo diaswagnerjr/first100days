@@ -57,6 +57,9 @@ export type Stakeholder = {
   learnings: string;
   notes: string;
   showOnDashboard: boolean;
+  agendaScheduled: boolean;
+  agendaDate: string;
+  conversationDone: boolean;
 };
 
 export type Supplier = {
@@ -67,6 +70,7 @@ export type Supplier = {
   relatedArea: string;
   criticality: Priority;
   contact: string;
+  contactRole: string;
   phone: string;
   email: string;
   firstInteraction: string;
@@ -81,6 +85,9 @@ export type Supplier = {
   nextSteps: string;
   notes: string;
   showOnDashboard: boolean;
+  agendaScheduled: boolean;
+  agendaDate: string;
+  conversationDone: boolean;
 };
 
 export type Category = {

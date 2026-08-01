@@ -130,7 +130,10 @@ export const stakeholdersSeed: Stakeholder[] = [
   nextSteps: "Agendar conversa inicial",
   learnings: "",
   notes: "",
-  showOnDashboard: false
+  showOnDashboard: false,
+  agendaScheduled: false,
+  agendaDate: "",
+  conversationDone: false
 }));
 
 export const suppliersInitial: Supplier[] = suppliersSeed.map((item, index) => ({
@@ -141,6 +144,7 @@ export const suppliersInitial: Supplier[] = suppliersSeed.map((item, index) => (
   relatedArea: inferArea(item.name, index),
   criticality: item.criticality as Supplier["criticality"],
   contact: item.contact,
+  contactRole: "",
   phone: "",
   email: "",
   firstInteraction: "",
@@ -154,7 +158,10 @@ export const suppliersInitial: Supplier[] = suppliersSeed.map((item, index) => (
   interactionStatus: "Nao iniciado",
   nextSteps: "",
   notes: "",
-  showOnDashboard: false
+  showOnDashboard: false,
+  agendaScheduled: false,
+  agendaDate: "",
+  conversationDone: false
 }));
 
 export const categoriesInitial: Category[] = categoriesSeed.map((item, index) => ({
