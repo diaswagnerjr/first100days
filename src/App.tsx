@@ -667,7 +667,7 @@ function App() {
               onChange={(row) => upsertRow("marketBenchmarks", row)}
             />
           )}
-          {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} addSupplier={() => addRow("suppliers", { name: "Novo fornecedor", category: "", spend: 0, criticality: "Media", relationshipStatus: "Mapear", interactionStatus: "Nao iniciado", showOnDashboard: false, agendaScheduled: false, agendaDate: "", conversationDone: false })} deleteSupplier={(id) => deleteRow("suppliers", id)} onChange={(row) => upsertRow("suppliers", row)} />}
+          {activeTab === "suppliers" && <SupplierPanel canEdit={canEdit} rows={data.suppliers} deleteSupplier={(id) => deleteRow("suppliers", id)} onChange={(row) => upsertRow("suppliers", row)} />}
         </main>
       </div>
     </Shell>
@@ -2106,7 +2106,7 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows
 
 type SupplierSort = "name" | "spend";
 
-function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {
+function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {
   const [query, setQuery] = useState("");
   const sourceRows = rows.length ? rows : suppliersInitial;
   const [sortBy, setSortBy] = useState<SupplierSort>("spend");
@@ -2158,10 +2158,6 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
       return updated;
     });
     setSavedId(row.id);
-  };
-  const createSupplier = async () => {
-    const id = await addSupplier();
-    if (id) startEdit(id);
   };
   return (
     <Panel
@@ -2671,7 +2667,7 @@ function calculateMetrics(data: AppData) {
     benchmarkProgress,
     criticalProcessesProgress,
     pillarProgress,
-    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + criticalProcessesProgress + deliveryProgress + stakeholderProgress + supplierProgress + pillarProgress) / 9,
+    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + stakeholderProgress + supplierProgress) / 6,
     supplierSpend: data.suppliers.reduce((sum, item) => sum + Number(item.spend || 0), 0),
     topSupplierSpend: data.suppliers.slice(0, 20).reduce((sum, item) => sum + Number(item.spend || 0), 0),
     categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0),
