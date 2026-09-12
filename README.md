@@ -17,15 +17,10 @@ Sistema pessoal para gerenciar os primeiros 100 dias como Gerente de Suprimentos
 - Stakeholders em tabela simples editavel por linha, com agenda, data, realizado, marcador de dashboard e exportacao PDF
 - Benchmark Mercado para conversas com 5 empresas, contatos e dimensoes comparativas
 - Fornecedores estrategicos em tabela editavel por linha, com pessoa contatada, cargo, agenda, realizado, marcador de dashboard, spend de referencia e exportacao PDF
-- Categorias como base de spend e referencia para Pessoas/Estrutura
-- Pilares metodologicos dos 100 dias
+- Categorias como base de spend e referencia para Pessoas/Estrutura
 - Handover Thais
-- Countdown recalculado com inicio em `22/06/2026` e checkpoints de 30, 60 e 100 dias
+- Countdown recalculado com inicio em `03/08/2026` e checkpoints de 30, 60 e 100 dias
 - Coaching com pacote de 6 sessoes, historico e preparacao da proxima conversa
-- Rotinas da Area por Tecnologia, Facilities / SSQV, Marketing, Rotinas Internas e Outras, com dashboard executivo clicavel
-- Processos Criticos com handover, acoes para SCRUM, exibicao opcional no dashboard e checklist de conclusao
-- Guardioes de processos, rituais e temas estruturais da area
-- Guia de Entregas com marcos de 30, 60, 90 e 120 dias e indicadores de sucesso da gestao
 - Tema claro/escuro
 - Exportacao `.ics` para Outlook/iPhone
 - Exportacao PDF da tabela de Stakeholders
@@ -66,7 +61,7 @@ Preencha `.env`:
 ```bash
 VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 VITE_SUPABASE_ANON_KEY=SUA_CHAVE_PUBLICA
-VITE_FIRST_DAY=2026-06-22
+VITE_FIRST_DAY=2026-08-03
 ```
 
 Se as variaveis de Supabase nao estiverem configuradas, o app abre em modo demo local para navegacao e validacao visual.
@@ -109,7 +104,8 @@ Observacao de seguranca: use apenas `VITE_SUPABASE_ANON_KEY`/publishable key no 
 Notas funcionais:
 
 - A aba `Categorias` nao aparece no menu principal, mas a tabela `categories` continua sendo usada no dashboard, em Pessoas e na simulacao de estrutura.
-- O progresso geral considera Pessoas, Handover Thais, Coaching, Benchmark Mercado, Processos Criticos, Entregas cadastradas, Stakeholders marcados para dashboard, Fornecedores marcados para dashboard e Pilares dos 100 dias.
+- As guias Pilares 100 dias, Rotinas da Area, Processos Criticos, Guardioes e Guia de Entregas foram retiradas da navegacao e do calculo do dashboard. As tabelas e registros seguem preservados no Supabase para historico e compatibilidade.
+- O progresso geral considera somente as frentes ativas: Pessoas, Handover Thais, Coaching, Benchmark Mercado, Stakeholders marcados para dashboard e Fornecedores marcados para dashboard.
 - Stakeholders e Fornecedores entram no dashboard/progresso somente quando o marcador de dashboard estiver habilitado; dentro desse grupo, so contam como concluidos quando `Realizado` estiver marcado. Se nenhum estiver marcado para dashboard, o indicador exibe `0/0`.
 - O modo claro/escuro usa upsert por `user_id` em `user_preferences`, evitando duplicidade de preferencia.
 - Anexos do handover sao salvos em `handover_checklist.attachments` como JSON para permitir download posterior.
@@ -120,7 +116,7 @@ Notas funcionais:
 - A migration `20260629120000_people_carteiras_sommos_capabilities.sql` adiciona campos incrementais em Pessoas, carrega SOMMOS e une as categorias da planilha de carteiras com qualquer atribuicao ja existente. Ela nao apaga anotacoes antigas.
 - A guia `Estrutura` foi removida da navegacao, mas as tabelas antigas `org_scenarios` e `org_scenario_items` foram preservadas para compatibilidade e historico.
 - A migration `20260701120000_market_benchmark.sql` cria a tabela `market_benchmarks`, com RLS, seed incremental de 5 empresas e nenhum overwrite dos dados existentes.
-- A migration `20260706120000_critical_processes.sql` cria a tabela `critical_processes`, com RLS, seed incremental dos processos iniciais e conclusao pelo checklist de acoes no SCRUM.
+- A migration `20260706120000_critical_processes.sql` cria a tabela `critical_processes`, com RLS, seed incremental dos processos iniciais e conclusao pelo checklist de acoes no SCRUM. A guia foi retirada da navegacao, mas os dados foram preservados.
 - A migration `20260709120000_dashboard_handover_adjustments.sql` adiciona os marcadores de dashboard em Stakeholders e Fornecedores e consolida os itens do Handover Thais no Checklist unico, preservando registros existentes.
 - A migration `20260801120000_stakeholder_supplier_agenda_status.sql` adiciona agenda, data da agenda e realizado para Stakeholders e Fornecedores, alem de cargo do contato em Fornecedores, com backfill a partir das datas historicas existentes.
 

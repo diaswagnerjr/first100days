@@ -74,7 +74,7 @@ import type {
   UserPreference
 } from "./lib/types";
 
-type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "criticalProcesses" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers";
+type TabKey = "dashboard" | "people" | "coaching" | "handover" | "stakeholders" | "marketBenchmark" | "suppliers";
 type CollectionKey =
   | "people"
   | "stakeholders"
@@ -92,7 +92,7 @@ type CollectionKey =
   | "orgScenarios"
   | "orgScenarioItems";
 
-const firstDayValue = import.meta.env.VITE_FIRST_DAY || "2026-06-22";
+const firstDayValue = import.meta.env.VITE_FIRST_DAY || "2026-08-03";
 const parseLocalDate = (value: string) => {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -103,14 +103,9 @@ const VIEWER_EMAIL = "wagnerdj@suzano.com.br";
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "pillars", label: "Pilares 100 dias", icon: Target },
   { key: "people", label: "Pessoas", icon: Users },
   { key: "coaching", label: "Coaching", icon: NotebookPen },
   { key: "handover", label: "Handover Thais", icon: Handshake },
-  { key: "clientRoutines", label: "Rotinas da Area", icon: Waypoints },
-  { key: "criticalProcesses", label: "Processos Criticos", icon: ClipboardCheck },
-  { key: "guardians", label: "Guardioes", icon: ShieldAlert },
-  { key: "deliveryGuide", label: "Guia de Entregas", icon: Target },
   { key: "stakeholders", label: "Stakeholders", icon: UserSquare2 },
   { key: "marketBenchmark", label: "Benchmark Mercado", icon: Building2 },
   { key: "suppliers", label: "Fornecedores", icon: BriefcaseBusiness }
@@ -651,7 +646,6 @@ function App() {
         <main className="min-w-0">
           {error && <div className="mb-4 rounded-md border border-coral/40 bg-coral/10 p-3 text-sm">{error}</div>}
           {activeTab === "dashboard" && <Dashboard dayState={dayState} data={data} metrics={metrics} />}
-          {activeTab === "pillars" && <PillarsPanel canEdit={canEdit} rows={data.methodologyPillars} onChange={(row) => upsertRow("methodologyPillars", row)} />}
           {activeTab === "people" && <PeoplePanel canEdit={canEdit} rows={data.people} categories={data.categories} deletePerson={(id) => deleteRow("people", id)} onChange={(row) => upsertRow("people", row)} />}
           {activeTab === "coaching" && <CoachingPanel canEdit={canEdit} rows={data.coachingSessions} onChange={(row) => upsertRow("coachingSessions", row)} />}
           {activeTab === "handover" && (
@@ -661,48 +655,6 @@ function App() {
               addItem={(section, itemName) => addRow("handoverChecklist", { item: itemName || (section === "administrativo" ? "Novo item administrativo" : "Novo topico de handover"), status: "Nao iniciado", owner: "Wagner / Thais", cluster: section === "administrativo" ? "Handover administrativo" : "Governanca e rotinas", section })}
               deleteItem={(id) => deleteRow("handoverChecklist", id)}
               onChange={(row) => upsertRow("handoverChecklist", row)}
-            />
-          )}
-          {activeTab === "clientRoutines" && (
-            <ClientRoutinesPanel
-              canEdit={canEdit}
-              rows={data.clientRoutines}
-              addRoutine={(area) => addRow("clientRoutines", { ...emptyClientRoutine, area, name: "Nova rotina" })}
-              deleteRoutine={(id) => deleteRow("clientRoutines", id)}
-              onChange={(row) => upsertRow("clientRoutines", row)}
-            />
-          )}
-          {activeTab === "criticalProcesses" && (
-            <CriticalProcessesPanel
-              canEdit={canEdit}
-              rows={data.criticalProcesses}
-              addProcess={() => addRow("criticalProcesses", { ...emptyCriticalProcess, name: "Novo processo critico" })}
-              deleteProcess={(id) => deleteRow("criticalProcesses", id)}
-              onChange={(row) => upsertRow("criticalProcesses", row)}
-            />
-          )}
-          {activeTab === "guardians" && (
-            <GuardiansPanel
-              canEdit={canEdit}
-              people={data.people}
-              routines={data.clientRoutines}
-              rows={data.guardians}
-              addGuardian={() => addRow("guardians", { ...emptyGuardian, processName: "Novo processo" })}
-              deleteGuardian={(id) => deleteRow("guardians", id)}
-              onChange={(row) => upsertRow("guardians", row)}
-            />
-          )}
-          {activeTab === "deliveryGuide" && (
-            <DeliveryGuidePanel
-              canEdit={canEdit}
-              rows={data.deliveryGuideItems}
-              indicators={data.successIndicators}
-              addDelivery={() => addRow("deliveryGuideItems", { ...emptyDeliveryGuideItem, name: "Nova entrega" })}
-              deleteDelivery={(id) => deleteRow("deliveryGuideItems", id)}
-              onDelivery={(row) => upsertRow("deliveryGuideItems", row)}
-              addIndicator={() => addRow("successIndicators", { ...emptySuccessIndicator, indicator: "Novo indicador" })}
-              deleteIndicator={(id) => deleteRow("successIndicators", id)}
-              onIndicator={(row) => upsertRow("successIndicators", row)}
             />
           )}
           {activeTab === "stakeholders" && <StakeholderPanel canEdit={canEdit} rows={data.stakeholders} addRow={() => addRow("stakeholders", { name: "Novo stakeholder", area: "", role: "Gerente Funcional", criticality: "Media", influence: "Media", interactionStatus: "Nao iniciado", showOnDashboard: false })} deleteRow={(id) => deleteRow("stakeholders", id)} onChange={(row) => upsertRow("stakeholders", row)} />}
@@ -783,13 +735,11 @@ function Dashboard({ dayState, data, metrics }: {
       <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
         <Metric title="Dia atual" value={`${dayState.elapsed}/100`} note={dayState.phase} />
         <Metric title="Progresso do tempo" value={percent(dayState.timeProgress)} note={`${formatDate(dayState.startDate)} a ${formatDate(dayState.endDate)}`} />
-        <Metric title="Progresso geral" value={percent(metrics.overall)} note="9 frentes" />
+        <Metric title="Progresso geral" value={percent(metrics.overall)} note="6 frentes ativas" />
         <Metric title="Pessoas" value={`${metrics.peopleDone}/${data.people.length}`} note="pessoas conversadas" />
         <Metric title="Handover Thais" value={`${metrics.handoverDone}/${data.handoverChecklist.length}`} note="pontos concluidos" />
         <Metric title="Sessoes de Coaching" value={`${metrics.coachingDone}/6`} note="sessoes realizadas" />
         <Metric title="Benchmark Mercado" value={`${metrics.benchmarkDone}/${metrics.benchmarkGoal}`} note="empresas conversadas" />
-        <Metric title="Processos Criticos" value={`${metrics.criticalProcessesDone}/${metrics.criticalProcessesTotal}`} note="acoes no SCRUM" />
-        <Metric title="Entregas" value={`${metrics.deliveryDone}/${metrics.deliveryTotal}`} note="guia dos marcos" />
         <Metric title="Stakeholders" value={`${metrics.stakeholdersDone}/${metrics.stakeholderGoal}`} note="marcados no dashboard" />
         <Metric title="Fornecedores" value={`${metrics.suppliersDone}/${metrics.supplierGoal}`} note="fichas preenchidas" />
       </section>
@@ -830,11 +780,8 @@ function Dashboard({ dayState, data, metrics }: {
           <ProgressRow label={`Handover Thais (${metrics.handoverDone}/${data.handoverChecklist.length})`} value={metrics.handoverProgress} />
           <ProgressRow label={`Coaching (${metrics.coachingDone}/6)`} value={metrics.coachingProgress} />
           <ProgressRow label={`Benchmark Mercado (${metrics.benchmarkDone}/${metrics.benchmarkGoal})`} value={metrics.benchmarkProgress} />
-          <ProgressRow label={`Processos Criticos (${metrics.criticalProcessesDone}/${metrics.criticalProcessesTotal})`} value={metrics.criticalProcessesProgress} />
-          <ProgressRow label={`Entregas cadastradas (${metrics.deliveryDone}/${metrics.deliveryTotal})`} value={metrics.deliveryProgress} />
           <ProgressRow label={`Stakeholders (${metrics.stakeholdersDone}/${metrics.stakeholderGoal})`} value={metrics.stakeholderProgress} />
           <ProgressRow label={`Fornecedores (${metrics.suppliersDone}/${metrics.supplierGoal})`} value={metrics.supplierProgress} />
-          <ProgressRow label={`Pilares (${metrics.pillarsDone}/${data.methodologyPillars.length})`} value={metrics.pillarProgress} />
         </Panel>
         <Panel title="Uso do sistema">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -846,17 +793,7 @@ function Dashboard({ dayState, data, metrics }: {
         </Panel>
       </section>
 
-      <section className="grid gap-4">
-        <Panel title="Processos criticos em destaque">
-          {data.criticalProcesses.some((item) => item.showOnDashboard) ? (
-            <RankedRows items={data.criticalProcesses.filter((item) => item.showOnDashboard).map((item) => [item.name, item.scrumActionsDone ? "SCRUM concluido" : "Pendente"])} />
-          ) : (
-            <p className="text-sm text-muted">Nenhum processo critico marcado para aparecer no dashboard.</p>
-          )}
-        </Panel>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
+<section className="grid gap-4 lg:grid-cols-2">
         <Panel title="Spend Categorias - referencia PB'26">
           <Metric title="Total PB'26" value={money(metrics.categorySpend)} note={`${data.categories.length} categorias`} />
           <RankedRows items={data.categories.slice(0, 20).map((item) => [item.name, money(item.spend)])} />
@@ -2136,10 +2073,7 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows
                     <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.showOnDashboard} onChange={(event) => updateDraft({ ...row, showOnDashboard: event.target.checked })} />
                   </td>
                   <td className="p-2 text-center align-top">
-                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked, agendaDate: event.target.checked ? row.agendaDate : "" })} />
-                  </td>
-                  <td className="p-2 align-top">
-                    <input className="field" disabled={!canEdit || !editing || !row.agendaScheduled} type="date" value={row.agendaDate || ""} onChange={(event) => updateDraft({ ...row, agendaDate: event.target.value, agendaScheduled: Boolean(event.target.value) || row.agendaScheduled })} />
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked })} />
                   </td>
                   <td className="p-2 text-center align-top">
                     <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.conversationDone} onChange={(event) => updateDraft({ ...row, conversationDone: event.target.checked })} />
@@ -2172,7 +2106,7 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows
 
 type SupplierSort = "name" | "spend";
 
-function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {
+function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {
   const [query, setQuery] = useState("");
   const sourceRows = rows.length ? rows : suppliersInitial;
   const [sortBy, setSortBy] = useState<SupplierSort>("spend");
@@ -2186,7 +2120,7 @@ function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }:
     });
   }, [sourceRows, editingIds]);
   const visible = draftRows
-    .filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase()) || row.contact.toLowerCase().includes(query.toLowerCase()))
+    .filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => sortBy === "spend" ? Number(b.spend || 0) - Number(a.spend || 0) : a.name.localeCompare(b.name, "pt-BR"));
   const dashboardRows = draftRows.filter((item) => item.showOnDashboard);
   const updateDraft = (next: Supplier) => {
@@ -2210,11 +2144,12 @@ function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }:
   const saveRow = async (row: Supplier) => {
     const next = {
       ...row,
-      nextInteraction: row.agendaScheduled ? row.agendaDate : "",
-      relationshipStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Mapear",
-      interactionStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Nao iniciado",
-      conversationDate: row.conversationDone ? (row.conversationDate || row.agendaDate || todayDate()) : "",
-      firstInteraction: row.conversationDone ? (row.firstInteraction || row.conversationDate || row.agendaDate || todayDate()) : ""
+      nextInteraction: "",
+      agendaDate: "",
+      relationshipStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Selecionado",
+      interactionStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Selecionado",
+      conversationDate: row.conversationDone ? (row.conversationDate || todayDate()) : "",
+      firstInteraction: row.conversationDone ? (row.firstInteraction || row.conversationDate || todayDate()) : ""
     };
     await onChange(next);
     setEditingIds((current) => {
@@ -2234,7 +2169,7 @@ function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }:
       action={
         <div className="flex flex-wrap gap-2">
           <button className="btn" onClick={() => downloadSuppliersPdf(visible)}><FileDown size={16} /> Exportar PDF</button>
-          {canEdit ? <button className="btn" onClick={createSupplier}><Plus size={16} /> Novo fornecedor</button> : <Badge tone="warn">Somente leitura</Badge>}
+          {!canEdit && <Badge tone="warn">Somente leitura</Badge>}
         </div>
       }
     >
@@ -2248,17 +2183,13 @@ function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }:
         <SearchBox value={query} onChange={setQuery} placeholder="Buscar fornecedor, categoria ou contato" />
       </div>
       <div className="overflow-x-auto rounded-md border border-line bg-surface">
-        <table className="w-full min-w-[1320px] text-left text-sm">
+        <table className="w-full min-w-[780px] text-left text-sm">
           <thead className="border-b border-line bg-card text-xs uppercase text-muted">
             <tr>
               <th className="w-[16%] p-3">Fornecedor</th>
               <th className="w-[10%] p-3">Spend</th>
-              <th className="w-[15%] p-3">Pessoa</th>
-              <th className="w-[12%] p-3">Cargo</th>
-              <th className="w-[20%] p-3">Anotacoes</th>
               <th className="w-[7%] p-3 text-center">Dashboard</th>
               <th className="w-[7%] p-3 text-center">Agenda</th>
-              <th className="w-[10%] p-3">Data agenda</th>
               <th className="w-[7%] p-3 text-center">Realizado</th>
               {canEdit && <th className="w-[11%] p-3 text-right">Acoes</th>}
             </tr>
@@ -2273,15 +2204,6 @@ function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }:
                   </td>
                   <td className="p-2 align-top">
                     <ReadOnly label="" value={money(row.spend)} />
-                  </td>
-                  <td className="p-2 align-top">
-                    <input className="field" disabled={!canEdit || !editing} value={row.contact || ""} onChange={(event) => updateDraft({ ...row, contact: event.target.value })} />
-                  </td>
-                  <td className="p-2 align-top">
-                    <input className="field" disabled={!canEdit || !editing} value={row.contactRole || ""} onChange={(event) => updateDraft({ ...row, contactRole: event.target.value })} />
-                  </td>
-                  <td className="p-2 align-top">
-                    <textarea className="field min-h-20" disabled={!canEdit || !editing} value={row.notes || ""} onChange={(event) => updateDraft({ ...row, notes: event.target.value })} />
                   </td>
                   <td className="p-2 text-center align-top">
                     <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.showOnDashboard} onChange={(event) => updateDraft({ ...row, showOnDashboard: event.target.checked })} />
@@ -2770,6 +2692,7 @@ function isSupplierScoped(item: Supplier) {
       || item.risks
       || item.agendaScheduled
       || item.conversationDone
+      || (item.relationshipStatus && item.relationshipStatus !== "Mapear")
       || (item.interactionStatus && item.interactionStatus !== "Nao iniciado")
   );
 }
@@ -2842,9 +2765,8 @@ function downloadStakeholdersPdf(rows: Stakeholder[]) {
 function downloadSuppliersPdf(rows: Supplier[]) {
   const lines = rows.flatMap((row, index) => [
     `${index + 1}. ${row.name || "Sem fornecedor"} | Spend: ${money(row.spend)}`,
-    `Pessoa: ${row.contact || "Nao informada"} | Cargo: ${row.contactRole || "Nao informado"} | Dashboard: ${row.showOnDashboard ? "Sim" : "Nao"}`,
-    `Agenda: ${row.agendaScheduled ? "Sim" : "Nao"} | Data: ${row.agendaDate || "Nao marcada"} | Realizado: ${row.conversationDone ? "Sim" : "Nao"}`,
-    `Anotacoes: ${row.notes || "Sem anotacoes"}`,
+    `Categoria: ${row.category || "Nao informada"} | Dashboard: ${row.showOnDashboard ? "Sim" : "Nao"}`,
+    `Agenda: ${row.agendaScheduled ? "Sim" : "Nao"} | Realizado: ${row.conversationDone ? "Sim" : "Nao"}`,
     ""
   ]);
   downloadSimplePdf("fornecedores-first100days.pdf", "Fornecedores - First100Days", lines);
