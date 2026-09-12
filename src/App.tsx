@@ -1968,6 +1968,7 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows
   const [draftRows, setDraftRows] = useState(rows);
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
   const [savedId, setSavedId] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
   useEffect(() => {
     setDraftRows((current) => {
       const draftsById = new Map(current.map((row) => [row.id, row]));
@@ -2089,7 +2090,7 @@ function StakeholderPanel({ rows, addRow, deleteRow, onChange, canEdit }: { rows
                             <button className="btn" onClick={() => cancelRow(row.id)}>Cancelar</button>
                           </>
                         )}
-                        <button className="btn" disabled={editing} onClick={() => { if (window.confirm("Excluir este stakeholder permanentemente?")) deleteRow(row.id); }}><Trash2 size={16} /></button>
+                        <button className="btn" disabled={editing} onClick={() => { if (window.confirm("Excluir este stakeholder permanentemente?")) deleteRow(row.id); }}><Trash2 size={16} /> Remover</button>
                       </div>
                       {savedId === row.id && <span className="mt-2 inline-block text-xs font-semibold text-leaf">Salvo</span>}
                     </td>
@@ -2119,9 +2120,10 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
       return sourceRows.map((row) => editingIds.has(row.id) ? draftsById.get(row.id) || row : row);
     });
   }, [sourceRows, editingIds]);
-  const visible = draftRows
+  const filteredBaseRows = draftRows
     .filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => sortBy === "spend" ? Number(b.spend || 0) - Number(a.spend || 0) : a.name.localeCompare(b.name, "pt-BR"));
+  const controlRows = filteredBaseRows.filter((row) => isSupplierScoped(row) || editingIds.has(row.id) || row.id === selectedSupplierId);
   const dashboardRows = draftRows.filter((item) => item.showOnDashboard);
   const updateDraft = (next: Supplier) => {
     setDraftRows((current) => current.map((row) => row.id === next.id ? next : row));
@@ -2159,24 +2161,68 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
     });
     setSavedId(row.id);
   };
+  const removeFromTracking = async (row: Supplier) => {
+    if (!window.confirm("Remover este fornecedor do acompanhamento? Nome, categoria e spend serao preservados.")) return;
+    const next = {
+      ...row,
+      contact: "",
+      contactRole: "",
+      notes: "",
+      phone: "",
+      email: "",
+      showOnDashboard: false,
+      agendaScheduled: false,
+      agendaDate: "",
+      conversationDone: false,
+      nextInteraction: "",
+      firstInteraction: "",
+      conversationDate: "",
+      relationshipStatus: "Mapear",
+      interactionStatus: "Nao iniciado"
+    };
+    await onChange(next);
+    setSelectedSupplierId((current) => current === row.id ? "" : current);
+    setEditingIds((current) => {
+      const updated = new Set(current);
+      updated.delete(row.id);
+      return updated;
+    });
+    setSavedId("");
+  };
+  const selectSupplier = (id: string) => {
+    if (!id) {
+      setSelectedSupplierId("");
+      return;
+    }
+    setSelectedSupplierId(id);
+    const selected = draftRows.find((row) => row.id === id);
+    if (selected && !isSupplierScoped(selected)) {
+      updateDraft({ ...selected, relationshipStatus: "Selecionado", interactionStatus: "Selecionado" });
+    }
+    startEdit(id);
+  };
   return (
     <Panel
       title="Fornecedores"
       action={
         <div className="flex flex-wrap gap-2">
-          <button className="btn" onClick={() => downloadSuppliersPdf(visible)}><FileDown size={16} /> Exportar PDF</button>
+          <button className="btn" onClick={() => downloadSuppliersPdf(controlRows)}><FileDown size={16} /> Exportar PDF</button>
           {!canEdit && <Badge tone="warn">Somente leitura</Badge>}
         </div>
       }
     >
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
-        <Metric title="Fornecedores" value={String(draftRows.length)} note="base carregada" />
+        <Metric title="Base fornecedores" value={String(draftRows.length)} note="disponiveis para selecionar" />
+        <Metric title="Em acompanhamento" value={String(controlRows.length)} note="selecionados/preenchidos" />
         <Metric title="No dashboard" value={String(dashboardRows.length)} note="marcados para progresso geral" />
         <Metric title="Realizados" value={String(dashboardRows.filter((item) => item.conversationDone).length)} note="bate-papos concluidos" />
+      </div>
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_220px]">
+        <Select disabled={!canEdit} label="Selecionar fornecedor da base" value={selectedSupplierId} onChange={selectSupplier} options={["", ...filteredBaseRows.map((item) => item.id)]} labels={{ "": "Selecione para acompanhar", ...Object.fromEntries(filteredBaseRows.map((item) => [item.id, `${item.name} | ${money(item.spend)}`])) }} />
         <Select label="Ordenar por" value={sortBy} onChange={(value) => setSortBy(value as SupplierSort)} options={["spend", "name"]} labels={{ spend: "Spend", name: "Nome" }} />
       </div>
       <div className="mb-4 max-w-xl">
-        <SearchBox value={query} onChange={setQuery} placeholder="Buscar fornecedor, categoria ou contato" />
+        <SearchBox value={query} onChange={setQuery} placeholder="Filtrar base por fornecedor ou categoria" />
       </div>
       <div className="overflow-x-auto rounded-md border border-line bg-surface">
         <table className="w-full min-w-[780px] text-left text-sm">
@@ -2191,7 +2237,7 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
             </tr>
           </thead>
           <tbody>
-            {visible.slice(0, 120).map((row) => {
+            {controlRows.slice(0, 120).map((row) => {
               const editing = editingIds.has(row.id);
               return (
                 <tr key={row.id} className="border-b border-line/70 last:border-b-0">
@@ -2205,10 +2251,7 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
                     <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.showOnDashboard} onChange={(event) => updateDraft({ ...row, showOnDashboard: event.target.checked })} />
                   </td>
                   <td className="p-2 text-center align-top">
-                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked, agendaDate: event.target.checked ? row.agendaDate : "" })} />
-                  </td>
-                  <td className="p-2 align-top">
-                    <input className="field" disabled={!canEdit || !editing || !row.agendaScheduled} type="date" value={row.agendaDate || ""} onChange={(event) => updateDraft({ ...row, agendaDate: event.target.value, agendaScheduled: Boolean(event.target.value) || row.agendaScheduled })} />
+                    <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked })} />
                   </td>
                   <td className="p-2 text-center align-top">
                     <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.conversationDone} onChange={(event) => updateDraft({ ...row, conversationDone: event.target.checked })} />
@@ -2224,7 +2267,7 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
                             <button className="btn" onClick={() => cancelRow(row.id)}>Cancelar</button>
                           </>
                         )}
-                        <button className="btn" disabled={editing} onClick={() => { if (window.confirm("Excluir este fornecedor permanentemente?")) deleteSupplier(row.id); }}><Trash2 size={16} /></button>
+                        <button className="btn" disabled={editing} onClick={() => { Number(row.spend || 0) > 0 ? removeFromTracking(row) : deleteSupplier(row.id) }}><Trash2 size={16} /></button>
                       </div>
                       {savedId === row.id && <span className="mt-2 inline-block text-xs font-semibold text-leaf">Salvo</span>}
                     </td>
@@ -2234,7 +2277,8 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
             })}
           </tbody>
         </table>
-        {visible.length > 120 && <p className="p-3 text-sm text-muted">Mostrando 120 de {visible.length} fornecedores. Use a busca para refinar.</p>}
+        {!controlRows.length && <p className="p-3 text-sm text-muted">Selecione um fornecedor na lista suspensa para iniciar o acompanhamento.</p>}
+        {controlRows.length > 120 && <p className="p-3 text-sm text-muted">Mostrando 120 de {controlRows.length} fornecedores em acompanhamento. Use a busca para refinar.</p>}
       </div>
       <div className="mt-5 rounded-md border border-line bg-surface p-3">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -2252,7 +2296,7 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
               </tr>
             </thead>
             <tbody>
-              {visible.map((row) => (
+              {filteredBaseRows.map((row) => (
                 <tr key={`${row.id}-spend`} className="border-b border-line/70">
                   <td className="p-2 font-medium">{row.name}</td>
                   <td className="p-2 text-muted">{row.category || "Sem categoria"}</td>
