@@ -22,12 +22,218 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Apply product simplification patch
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      - name: Align source for active modules
         run: |
+          cat > /tmp/supplier_panel.txt <<'SUPPLIER'
+          function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {
+            const [query, setQuery] = useState("");
+            const sourceRows = rows.length ? rows : suppliersInitial;
+            const [sortBy, setSortBy] = useState<SupplierSort>("spend");
+            const [draftRows, setDraftRows] = useState(sourceRows);
+            const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+            const [savedId, setSavedId] = useState("");
+            const [selectedSupplierId, setSelectedSupplierId] = useState("");
+            useEffect(() => {
+              setDraftRows((current) => {
+                const draftsById = new Map(current.map((row) => [row.id, row]));
+                return sourceRows.map((row) => editingIds.has(row.id) ? draftsById.get(row.id) || row : row);
+              });
+            }, [sourceRows, editingIds]);
+            const filteredBaseRows = draftRows
+              .filter((row) => row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase()))
+              .sort((a, b) => sortBy === "spend" ? Number(b.spend || 0) - Number(a.spend || 0) : a.name.localeCompare(b.name, "pt-BR"));
+            const controlRows = filteredBaseRows.filter((row) => isSupplierScoped(row) || editingIds.has(row.id) || row.id === selectedSupplierId);
+            const dashboardRows = draftRows.filter((item) => item.showOnDashboard);
+            const updateDraft = (next: Supplier) => {
+              setDraftRows((current) => current.map((row) => row.id === next.id ? next : row));
+              setSavedId("");
+            };
+            const startEdit = (id: string) => {
+              setEditingIds((current) => new Set([...current, id]));
+              setSavedId("");
+            };
+            const cancelRow = (id: string) => {
+              const original = sourceRows.find((row) => row.id === id);
+              if (original) setDraftRows((current) => current.map((row) => row.id === id ? original : row));
+              setEditingIds((current) => {
+                const next = new Set(current);
+                next.delete(id);
+                return next;
+              });
+              setSavedId("");
+            };
+            const saveRow = async (row: Supplier) => {
+              const next = {
+                ...row,
+                nextInteraction: "",
+                agendaDate: "",
+                relationshipStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Selecionado",
+                interactionStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Selecionado",
+                conversationDate: row.conversationDone ? (row.conversationDate || todayDate()) : "",
+                firstInteraction: row.conversationDone ? (row.firstInteraction || row.conversationDate || todayDate()) : ""
+              };
+              await onChange(next);
+              setEditingIds((current) => {
+                const updated = new Set(current);
+                updated.delete(row.id);
+                return updated;
+              });
+              setSavedId(row.id);
+            };
+            const removeFromTracking = async (row: Supplier) => {
+              if (!window.confirm("Remover este fornecedor do acompanhamento? Nome, categoria e spend serao preservados.")) return;
+              const next = {
+                ...row,
+                contact: "",
+                contactRole: "",
+                notes: "",
+                phone: "",
+                email: "",
+                showOnDashboard: false,
+                agendaScheduled: false,
+                agendaDate: "",
+                conversationDone: false,
+                nextInteraction: "",
+                firstInteraction: "",
+                conversationDate: "",
+                relationshipStatus: "Mapear",
+                interactionStatus: "Nao iniciado"
+              };
+              await onChange(next);
+              setSelectedSupplierId((current) => current === row.id ? "" : current);
+              setEditingIds((current) => {
+                const updated = new Set(current);
+                updated.delete(row.id);
+                return updated;
+              });
+              setSavedId("");
+            };
+            const selectSupplier = (id: string) => {
+              if (!id) {
+                setSelectedSupplierId("");
+                return;
+              }
+              setSelectedSupplierId(id);
+              const selected = draftRows.find((row) => row.id === id);
+              if (selected && !isSupplierScoped(selected)) {
+                updateDraft({ ...selected, relationshipStatus: "Selecionado", interactionStatus: "Selecionado" });
+              }
+              startEdit(id);
+            };
+            return (
+              <Panel
+                title="Fornecedores"
+                action={
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn" onClick={() => downloadSuppliersPdf(controlRows)}><FileDown size={16} /> Exportar PDF</button>
+                    {!canEdit && <Badge tone="warn">Somente leitura</Badge>}
+                  </div>
+                }
+              >
+                <div className="mb-4 grid gap-3 sm:grid-cols-4">
+                  <Metric title="Base fornecedores" value={String(draftRows.length)} note="disponiveis para selecionar" />
+                  <Metric title="Em acompanhamento" value={String(controlRows.length)} note="selecionados/preenchidos" />
+                  <Metric title="No dashboard" value={String(dashboardRows.length)} note="marcados para progresso geral" />
+                  <Metric title="Realizados" value={String(dashboardRows.filter((item) => item.conversationDone).length)} note="bate-papos concluidos" />
+                </div>
+                <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_220px]">
+                  <Select disabled={!canEdit} label="Selecionar fornecedor da base" value={selectedSupplierId} onChange={selectSupplier} options={["", ...filteredBaseRows.map((item) => item.id)]} labels={{ "": "Selecione para acompanhar", ...Object.fromEntries(filteredBaseRows.map((item) => [item.id, `${item.name} | ${money(item.spend)}`])) }} />
+                  <Select label="Ordenar por" value={sortBy} onChange={(value) => setSortBy(value as SupplierSort)} options={["spend", "name"]} labels={{ spend: "Spend", name: "Nome" }} />
+                </div>
+                <div className="mb-4 max-w-xl">
+                  <SearchBox value={query} onChange={setQuery} placeholder="Filtrar base por fornecedor ou categoria" />
+                </div>
+                <div className="overflow-x-auto rounded-md border border-line bg-surface">
+                  <table className="w-full min-w-[780px] text-left text-sm">
+                    <thead className="border-b border-line bg-card text-xs uppercase text-muted">
+                      <tr>
+                        <th className="w-[42%] p-3">Fornecedor</th>
+                        <th className="w-[18%] p-3">Spend</th>
+                        <th className="w-[12%] p-3 text-center">Dashboard</th>
+                        <th className="w-[12%] p-3 text-center">Agenda</th>
+                        <th className="w-[12%] p-3 text-center">Realizado</th>
+                        {canEdit && <th className="w-[22%] p-3 text-right">Acoes</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {controlRows.slice(0, 120).map((row) => {
+                        const editing = editingIds.has(row.id);
+                        return (
+                          <tr key={row.id} className="border-b border-line/70 last:border-b-0">
+                            <td className="p-2 align-top">
+                              <input className="field" disabled={!canEdit || !editing} value={row.name || ""} onChange={(event) => updateDraft({ ...row, name: event.target.value })} />
+                            </td>
+                            <td className="p-2 align-top">
+                              <ReadOnly label="" value={money(row.spend)} />
+                            </td>
+                            <td className="p-2 text-center align-top">
+                              <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.showOnDashboard} onChange={(event) => updateDraft({ ...row, showOnDashboard: event.target.checked })} />
+                            </td>
+                            <td className="p-2 text-center align-top">
+                              <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.agendaScheduled} onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked })} />
+                            </td>
+                            <td className="p-2 text-center align-top">
+                              <input className="mt-3 h-5 w-5 accent-leaf" disabled={!canEdit || !editing} type="checkbox" checked={row.conversationDone} onChange={(event) => updateDraft({ ...row, conversationDone: event.target.checked })} />
+                            </td>
+                            {canEdit && (
+                              <td className="p-2 text-right align-top">
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  {!editing ? (
+                                    <button className="btn" onClick={() => startEdit(row.id)}><Edit3 size={16} /> Editar</button>
+                                  ) : (
+                                    <>
+                                      <button className="btn" onClick={() => saveRow(row)}><Save size={16} /> Salvar</button>
+                                      <button className="btn" onClick={() => cancelRow(row.id)}>Cancelar</button>
+                                    </>
+                                  )}
+                                  <button className="btn" disabled={editing} onClick={() => Number(row.spend || 0) > 0 ? removeFromTracking(row) : deleteSupplier(row.id)}><Trash2 size={16} /> Remover</button>
+                                </div>
+                                {savedId === row.id && <span className="mt-2 inline-block text-xs font-semibold text-leaf">Salvo</span>}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!controlRows.length && <p className="p-3 text-sm text-muted">Selecione um fornecedor na lista suspensa para iniciar o acompanhamento.</p>}
+                  {controlRows.length > 120 && <p className="p-3 text-sm text-muted">Mostrando 120 de {controlRows.length} fornecedores em acompanhamento. Use a busca para refinar.</p>}
+                </div>
+                <div className="mt-5 rounded-md border border-line bg-surface p-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold">Fornecedores x spend</h3>
+                    <Badge>{draftRows.filter((item) => item.conversationDone).length} bate-papos realizados</Badge>
+                  </div>
+                  <div className="max-h-80 overflow-auto">
+                    <table className="w-full min-w-[720px] text-left text-sm">
+                      <thead className="sticky top-0 border-b border-line bg-card text-xs uppercase text-muted">
+                        <tr>
+                          <th className="p-2">Fornecedor</th>
+                          <th className="p-2">Categoria</th>
+                          <th className="p-2 text-right">Spend</th>
+                          <th className="p-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredBaseRows.map((row) => (
+                          <tr key={`${row.id}-spend`} className="border-b border-line/70">
+                            <td className="p-2 font-medium">{row.name}</td>
+                            <td className="p-2 text-muted">{row.category || "Sem categoria"}</td>
+                            <td className="p-2 text-right font-semibold">{money(row.spend)}</td>
+                            <td className="p-2">{row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Pendente"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </Panel>
+            );
+          }
+          SUPPLIER
           node <<'NODE'
           const fs = require('fs');
+          const supplier = fs.readFileSync('/tmp/supplier_panel.txt', 'utf8').replace(/^          /gm, '').trimEnd();
           function replaceAll(file, transform) {
             const before = fs.readFileSync(file, 'utf8');
             const after = transform(before);
@@ -35,57 +241,20 @@ jobs:
           }
           replaceAll('src/App.tsx', (input) => {
             let app = input;
-            app = app.replace('type TabKey = "dashboard" | "pillars" | "people" | "coaching" | "handover" | "clientRoutines" | "criticalProcesses" | "guardians" | "deliveryGuide" | "stakeholders" | "marketBenchmark" | "suppliers";', 'type TabKey = "dashboard" | "people" | "coaching" | "handover" | "stakeholders" | "marketBenchmark" | "suppliers";');
+            app = app.replace(/function SupplierPanel\([\s\S]*?\n\}\n\nfunction DiagnosisPanel/, `${supplier}\n\nfunction DiagnosisPanel`);
             app = app.replace('const firstDayValue = import.meta.env.VITE_FIRST_DAY || "2026-06-22";', 'const firstDayValue = import.meta.env.VITE_FIRST_DAY || "2026-08-03";');
-            app = app.replace(/const tabs: Array<\{ key: TabKey; label: string; icon: typeof LayoutDashboard \}> = \[[\s\S]*?\n\];/, `const tabs: Array<{ key: TabKey; label: string; icon: typeof LayoutDashboard }> = [\n  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },\n  { key: "people", label: "Pessoas", icon: Users },\n  { key: "coaching", label: "Coaching", icon: NotebookPen },\n  { key: "handover", label: "Handover Thais", icon: Handshake },\n  { key: "stakeholders", label: "Stakeholders", icon: UserSquare2 },\n  { key: "marketBenchmark", label: "Benchmark Mercado", icon: Building2 },\n  { key: "suppliers", label: "Fornecedores", icon: BriefcaseBusiness }\n];`);
-            app = app.replace(/          \{activeTab === "dashboard" && <Dashboard dayState=\{dayState\} data=\{data\} metrics=\{metrics\} \/>\}\r?\n          \{activeTab === "pillars"[\s\S]*?          \{activeTab === "stakeholders"/, `          {activeTab === "dashboard" && <Dashboard dayState={dayState} data={data} metrics={metrics} />}\n          {activeTab === "people" && <PeoplePanel canEdit={canEdit} rows={data.people} categories={data.categories} deletePerson={(id) => deleteRow("people", id)} onChange={(row) => upsertRow("people", row)} />}\n          {activeTab === "coaching" && <CoachingPanel canEdit={canEdit} rows={data.coachingSessions} onChange={(row) => upsertRow("coachingSessions", row)} />}\n          {activeTab === "handover" && (\n            <HandoverPanel\n              canEdit={canEdit}\n              rows={data.handoverChecklist}\n              addItem={(section, itemName) => addRow("handoverChecklist", { item: itemName || (section === "administrativo" ? "Novo item administrativo" : "Novo topico de handover"), status: "Nao iniciado", owner: "Wagner / Thais", cluster: section === "administrativo" ? "Handover administrativo" : "Governanca e rotinas", section })}\n              deleteItem={(id) => deleteRow("handoverChecklist", id)}\n              onChange={(row) => upsertRow("handoverChecklist", row)}\n            />\n          )}\n          {activeTab === "stakeholders"`);
             app = app.replace('note="9 frentes"', 'note="6 frentes ativas"');
-            app = app.replace(/\s*<Metric title="Processos Criticos"[^\n]*\n/g, '\n');
-            app = app.replace(/\s*<Metric title="Entregas"[^\n]*\n/g, '\n');
-            app = app.replace(/\s*<ProgressRow label=\{`Processos Criticos[^\n]*\n/g, '\n');
-            app = app.replace(/\s*<ProgressRow label=\{`Entregas cadastradas[^\n]*\n/g, '\n');
-            app = app.replace(/\s*<ProgressRow label=\{`Pilares[^\n]*\n/g, '\n');
-            app = app.replace(/\n\s*<section className="grid gap-4">\s*<Panel title="Processos criticos em destaque">[\s\S]*?<\/Panel>\s*<\/section>\s*/m, '\n\n');
-            app = app.replace('function SupplierPanel({ rows, addSupplier, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {', 'function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supplier[]; addSupplier: () => void | Promise<string>; deleteSupplier: (id: string) => void; onChange: (row: Supplier) => void | Promise<void>; canEdit: boolean }) {');
-            app = app.replace('row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase()) || row.contact.toLowerCase().includes(query.toLowerCase())', 'row.name.toLowerCase().includes(query.toLowerCase()) || row.category.toLowerCase().includes(query.toLowerCase())');
-            app = app.replace(/  const createSupplier = async \(\) => \{[\s\S]*?  \};\n  const selectSupplier = \(id: string\) => \{\n    setSelectedSupplierId\(id\);\n    startEdit\(id\);\n  \};/, `  const selectSupplier = (id: string) => {\n    if (!id) {\n      setSelectedSupplierId("");\n      return;\n    }\n    setSelectedSupplierId(id);\n    const selected = draftRows.find((row) => row.id === id);\n    if (selected && !isSupplierScoped(selected)) {\n      updateDraft({ ...selected, relationshipStatus: "Selecionado", interactionStatus: "Selecionado" });\n    }\n    startEdit(id);\n  };`);
-            app = app.replace(/      nextInteraction: row\.agendaScheduled \? row\.agendaDate : "",\n      relationshipStatus: row\.conversationDone \? "Realizado" : row\.agendaScheduled \? "Agendado" : "Mapear",\n      interactionStatus: row\.conversationDone \? "Realizado" : row\.agendaScheduled \? "Agendado" : "Nao iniciado",\n      conversationDate: row\.conversationDone \? \(row\.conversationDate \|\| row\.agendaDate \|\| todayDate\(\)\) : "",\n      firstInteraction: row\.conversationDone \? \(row\.firstInteraction \|\| row\.conversationDate \|\| row\.agendaDate \|\| todayDate\(\)\) : ""/, `      nextInteraction: "",\n      agendaDate: "",\n      relationshipStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Selecionado",\n      interactionStatus: row.conversationDone ? "Realizado" : row.agendaScheduled ? "Agendado" : "Selecionado",\n      conversationDate: row.conversationDone ? (row.conversationDate || todayDate()) : "",\n      firstInteraction: row.conversationDone ? (row.firstInteraction || row.conversationDate || todayDate()) : ""`);
-            app = app.replace('{canEdit ? <button className="btn" onClick={createSupplier}><Plus size={16} /> Novo fornecedor</button> : <Badge tone="warn">Somente leitura</Badge>}', '{!canEdit && <Badge tone="warn">Somente leitura</Badge>}');
-            app = app.replace('<Select label="Selecionar fornecedor da base"', '<Select disabled={!canEdit} label="Selecionar fornecedor da base"');
-            app = app.replace('placeholder="Filtrar base por fornecedor, categoria ou contato"', 'placeholder="Filtrar base por fornecedor ou categoria"');
-            app = app.replace('min-w-[1320px]', 'min-w-[780px]');
-            app = app.replace(/\n\s*<th className="w-\[15%\] p-3">Pessoa<\/th>\n\s*<th className="w-\[12%\] p-3">Cargo<\/th>\n\s*<th className="w-\[20%\] p-3">Anotacoes<\/th>/, '');
-            app = app.replace(/\n\s*<th className="w-\[10%\] p-3">Data agenda<\/th>/, '');
-            app = app.replace(/\n\s*<td className="p-2 align-top">\s*<input className="field" disabled=\{!canEdit \|\| !editing\} value=\{row\.contact \|\| ""\}[\s\S]*?<\/td>\s*<td className="p-2 align-top">\s*<input className="field" disabled=\{!canEdit \|\| !editing\} value=\{row\.contactRole \|\| ""\}[\s\S]*?<\/td>\s*<td className="p-2 align-top">\s*<textarea className="field min-h-20" disabled=\{!canEdit \|\| !editing\} value=\{row\.notes \|\| ""\}[\s\S]*?<\/td>/, '');
-            app = app.replace(/\n\s*<td className="p-2 align-top">\s*<input className="field" disabled=\{!canEdit \|\| !editing \|\| !row\.agendaScheduled\} type="date"[\s\S]*?<\/td>/, '');
-            app = app.replace('onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked, agendaDate: event.target.checked ? row.agendaDate : "" })}', 'onChange={(event) => updateDraft({ ...row, agendaScheduled: event.target.checked })}');
-            app = app.replace(/function calculateMetrics\(data: AppData\) \{[\s\S]*?\n\}\n\nfunction isSupplierScoped/, `function calculateMetrics(data: AppData) {\n  const peopleDone = data.people.filter((item) => item.firstOneOnOne).length;\n  const handoverDone = data.handoverChecklist.filter((item) => item.status === "Concluido").length;\n  const coachingDone = data.coachingSessions.filter((item) => item.sessionDate).length;\n  const dashboardStakeholders = data.stakeholders.filter((item) => item.showOnDashboard);\n  const stakeholderGoal = dashboardStakeholders.length;\n  const stakeholdersDone = dashboardStakeholders.filter((item) => item.conversationDone).length;\n  const dashboardSuppliers = data.suppliers.filter((item) => item.showOnDashboard);\n  const supplierGoal = dashboardSuppliers.length;\n  const suppliersDone = dashboardSuppliers.filter(isSupplierDone).length;\n  const benchmarkGoal = Math.max(5, data.marketBenchmarks.length || 5);\n  const benchmarkDone = data.marketBenchmarks.filter(isBenchmarkDone).length;\n  const peopleProgress = data.people.length ? peopleDone / data.people.length : 0;\n  const handoverProgress = data.handoverChecklist.length ? handoverDone / data.handoverChecklist.length : 0;\n  const coachingProgress = coachingDone / 6;\n  const stakeholderProgress = stakeholderGoal ? stakeholdersDone / stakeholderGoal : 0;\n  const supplierProgress = supplierGoal ? suppliersDone / supplierGoal : 0;\n  const benchmarkProgress = benchmarkDone / benchmarkGoal;\n  const assignedCategories = new Set(data.people.flatMap((person) => person.categoryIds || []));\n  const unassignedCategoryNames = data.categories.filter((category) => !assignedCategories.has(category.id)).map((category) => category.name);\n  return {\n    peopleDone, handoverDone, coachingDone, stakeholdersDone, stakeholderGoal, suppliersDone, supplierGoal, benchmarkDone, benchmarkGoal,\n    peopleProgress, handoverProgress, coachingProgress, stakeholderProgress, supplierProgress, benchmarkProgress,\n    overall: (peopleProgress + handoverProgress + coachingProgress + benchmarkProgress + stakeholderProgress + supplierProgress) / 6,\n    supplierSpend: data.suppliers.reduce((sum, item) => sum + Number(item.spend || 0), 0),\n    topSupplierSpend: data.suppliers.slice(0, 20).reduce((sum, item) => sum + Number(item.spend || 0), 0),\n    categorySpend: data.categories.reduce((sum, item) => sum + Number(item.spend || 0), 0),\n    unassignedCategories: unassignedCategoryNames.length,\n    unassignedCategoryNames\n  };\n}\n\nfunction isSupplierScoped`);
-            if (!app.includes('|| (item.relationshipStatus && item.relationshipStatus !== "Mapear")')) {
-              app = app.replace('      || item.conversationDone\n      || (item.interactionStatus', '      || item.conversationDone\n      || (item.relationshipStatus && item.relationshipStatus !== "Mapear")\n      || (item.interactionStatus');
-            }
-            app = app.replace(/function downloadSuppliersPdf\(rows: Supplier\[\]\) \{[\s\S]*?\n\}\n\nfunction downloadSimplePdf/, `function downloadSuppliersPdf(rows: Supplier[]) {\n  const lines = rows.flatMap((row, index) => [\n    \`${'${index + 1}. ${row.name || "Sem fornecedor"} | Spend: ${money(row.spend)}'}\`,\n    \`${'Categoria: ${row.category || "Nao informada"} | Dashboard: ${row.showOnDashboard ? "Sim" : "Nao"}'}\`,\n    \`${'Agenda: ${row.agendaScheduled ? "Sim" : "Nao"} | Realizado: ${row.conversationDone ? "Sim" : "Nao"}'}\`,\n    ""\n  ]);\n  downloadSimplePdf("fornecedores-first100days.pdf", "Fornecedores - First100Days", lines);\n}\n\nfunction downloadSimplePdf`);
             return app;
           });
-          replaceAll('README.md', (input) => {
-            let md = input;
-            md = md.replace('Fornecedores estrategicos com selecao por lista suspensa a partir da base de spend, acompanhamento editavel por linha, pessoa contatada, cargo, agenda, realizado, marcador de dashboard, tabela de spend de referencia e exportacao PDF', 'Fornecedores estrategicos com selecao por lista suspensa a partir da base de spend, acompanhamento simples por linha, agenda, realizado, marcador de dashboard, tabela de spend de referencia e exportacao PDF');
-            md = md.replace(/\n- Pilares metodologicos dos 100 dias/g, '');
-            md = md.replace('Countdown recalculado com inicio em `22/06/2026`', 'Countdown recalculado com inicio em `03/08/2026`');
-            md = md.replace(/\n- Rotinas da Area[^\n]*/g, '');
-            md = md.replace(/\n- Processos Criticos[^\n]*/g, '');
-            md = md.replace(/\n- Guardioes[^\n]*/g, '');
-            md = md.replace(/\n- Guia de Entregas[^\n]*/g, '');
-            md = md.replace('VITE_FIRST_DAY=2026-06-22', 'VITE_FIRST_DAY=2026-08-03');
-            md = md.replace('- O progresso geral considera Pessoas, Handover Thais, Coaching, Benchmark Mercado, Processos Criticos, Entregas cadastradas, Stakeholders marcados para dashboard, Fornecedores marcados para dashboard e Pilares dos 100 dias.', '- As guias Pilares 100 dias, Rotinas da Area, Processos Criticos, Guardioes e Guia de Entregas foram retiradas da navegacao e do calculo do dashboard. As tabelas e registros seguem preservados no Supabase para historico e compatibilidade.\n- O progresso geral considera somente as frentes ativas: Pessoas, Handover Thais, Coaching, Benchmark Mercado, Stakeholders marcados para dashboard e Fornecedores marcados para dashboard.');
-            md = md.replace('- A migration `20260706120000_critical_processes.sql` cria a tabela `critical_processes`, com RLS, seed incremental dos processos iniciais e conclusao pelo checklist de acoes no SCRUM.', '- A migration `20260706120000_critical_processes.sql` cria a tabela `critical_processes`, com RLS, seed incremental dos processos iniciais e conclusao pelo checklist de acoes no SCRUM. A guia foi retirada da navegacao, mas os dados foram preservados.');
-            return md;
-          });
+          replaceAll('README.md', (input) => input
+            .replace('Fornecedores estrategicos com selecao por lista suspensa a partir da base de spend, acompanhamento editavel por linha, pessoa contatada, cargo, agenda, realizado, marcador de dashboard, tabela de spend de referencia e exportacao PDF', 'Fornecedores estrategicos com selecao por lista suspensa a partir da base de spend, acompanhamento simples por linha, agenda, realizado, marcador de dashboard, tabela de spend de referencia e exportacao PDF')
+            .replace('VITE_FIRST_DAY=2026-06-22', 'VITE_FIRST_DAY=2026-08-03'));
           NODE
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --quiet -- src/App.tsx README.md; then
             git add src/App.tsx README.md
-            git commit -m "Simplify dashboard tabs and supplier tracking"
+            git commit -m "Fix supplier tracking UI"
             git push origin HEAD:main
           fi
       - run: npm install
