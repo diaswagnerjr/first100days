@@ -2114,6 +2114,7 @@ function SupplierPanel({ rows, deleteSupplier, onChange, canEdit }: { rows: Supp
   const [draftRows, setDraftRows] = useState(sourceRows);
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
   const [savedId, setSavedId] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
   useEffect(() => {
     setDraftRows((current) => {
       const draftsById = new Map(current.map((row) => [row.id, row]));
